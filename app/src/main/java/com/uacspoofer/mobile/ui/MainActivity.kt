@@ -17,7 +17,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.uacspoofer.mobile.BuildConfig
 import com.uacspoofer.mobile.core.ConnectionState
 import com.uacspoofer.mobile.core.ConnectionStateStore
 import com.uacspoofer.mobile.core.VpnController
@@ -29,7 +33,15 @@ import com.uacspoofer.mobile.ui.theme.UacSniSpooferTheme
 import com.uacspoofer.mobile.update.AppUpdateManager
 import com.uacspoofer.mobile.vpn.AutoConnectCoordinator
 import com.uacspoofer.mobile.vpn.AutoConnectOrigin
+import com.uacspoofer.mobile.vpn.ConnectionMetricsStore
+import com.uacspoofer.mobile.vpn.LivePing
 import com.uacspoofer.mobile.vpn.MonthlyTrafficStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val vpnPermissionLauncher = registerForActivityResult(
@@ -70,7 +82,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyShellOrientation() {
-        requestedOrientation = if (WideShell.isWideDevice(this)) {
+        requestedOrientation = if (BuildConfig.TV_MODE) {
             ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -107,6 +119,11 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             window.decorView.post { AutoConnectCoordinator.tryStart(this, AutoConnectOrigin.APP_START) }
         }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                runForegroundPingLoop()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -118,6 +135,38 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         AppUpdateManager.resumePendingInstall(this)
+    }
+
+    private suspend fun runForegroundPingLoop() = coroutineScope {
+        var awaitingFirst = true
+        while (isActive) {
+            if (ConnectionStateStore.state.value != ConnectionState.CONNECTED) {
+                awaitingFirst = true
+                delay(400)
+                continue
+            }
+            if (awaitingFirst) {
+                delay(LivePing.SETTLE_MS)
+                if (ConnectionStateStore.state.value != ConnectionState.CONNECTED) continue
+                awaitingFirst = false
+            }
+            LivePing.awaitChipSlot(this@MainActivity) {
+                isActive && ConnectionStateStore.state.value == ConnectionState.CONNECTED
+            }
+            if (!isActive || ConnectionStateStore.state.value != ConnectionState.CONNECTED) continue
+            if (ConnectionMetricsStore.metrics.value.latencyMs == null) {
+                ConnectionMetricsStore.beginLatencyMeasurement()
+            }
+            val sample = withContext(Dispatchers.IO) {
+                runCatching { LivePing.measure(this@MainActivity) }.getOrNull()
+            }
+            if (sample != null) {
+                ConnectionMetricsStore.publishLivePing(sample)
+            } else if (ConnectionMetricsStore.metrics.value.latencyMs == null) {
+                ConnectionMetricsStore.finishLatencyMeasurement()
+            }
+            delay(LivePing.INTERVAL_MS)
+        }
     }
 
     private fun beginConnect() {

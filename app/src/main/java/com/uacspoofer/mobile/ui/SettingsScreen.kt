@@ -1,5 +1,7 @@
 package com.uacspoofer.mobile.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.app.StatusBarManager
 import android.content.ComponentName
 import android.graphics.drawable.Icon
@@ -87,6 +89,7 @@ import com.uacspoofer.mobile.engine.tor.TorEngineStore
 import com.uacspoofer.mobile.location.GpsSpoofRuntime
 import com.uacspoofer.mobile.location.GpsSpoofStore
 import com.uacspoofer.mobile.location.GpsSpoofTarget
+import com.uacspoofer.mobile.logging.CrashReportStore
 import com.uacspoofer.mobile.profiles.ProfileStore
 import com.uacspoofer.mobile.settings.AdvancedSettingsStore
 import com.uacspoofer.mobile.settings.CONNECTION_MODE_PROXY
@@ -204,6 +207,7 @@ internal fun SettingsScreen(
                             onClick = onAdvancedSettingsClick,
                         )
                     }
+                    CrashReportSettingsRow(showDivider = true)
                     QuickSettingsTileRow(
                         notice = tileNotice,
                         showDivider = false,
@@ -850,6 +854,46 @@ private fun SettingsNavRow(
         }
         if (showDivider) SettingsHairline()
     }
+}
+
+@Composable
+private fun CrashReportSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var copied by remember { mutableStateOf(false) }
+    var hasReport by remember { mutableStateOf(CrashReportStore.hasReport(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasReport = CrashReportStore.hasReport(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    SettingsNavRow(
+        icon = Icons.Outlined.ContentCopy,
+        title = homeText("Copy crash report", "کپی گزارش کرش"),
+        summary = when {
+            copied -> homeText("Copied — paste it in a message", "کپی شد — در پیام بچسبان")
+            hasReport -> homeText("Last crash is ready to send", "آخرین کرش آماده ارسال است")
+            else -> homeText("No crash recorded yet", "کرشی ثبت نشده")
+        },
+        isPersian = LocalHomePersian.current,
+        showDivider = showDivider,
+        onClick = {
+            val payload = CrashReportStore.copyPayload(context)
+            if (payload.isNullOrBlank()) {
+                hasReport = false
+                copied = false
+            } else {
+                context.getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("UAC crash report", payload))
+                hasReport = true
+                copied = true
+            }
+        },
+    )
 }
 
 @Composable

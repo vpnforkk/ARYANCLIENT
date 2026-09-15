@@ -10,8 +10,23 @@ import kotlinx.coroutines.flow.asStateFlow
 class EngineModeStore private constructor(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private val mutableMode = MutableStateFlow(EngineMode.fromStored(prefs.getString(KEY_MODE, null)))
+    private val mutableMode = MutableStateFlow(loadInitialMode())
     val mode: StateFlow<EngineMode> = mutableMode.asStateFlow()
+
+    private fun loadInitialMode(): EngineMode {
+        val stored = EngineMode.fromStored(prefs.getString(KEY_MODE, null))
+        val introApplied = prefs.getBoolean(EnginePowIntro.FLAG_KEY, false)
+        val resolved = EnginePowIntro.resolve(stored, introApplied)
+        if (!introApplied || resolved != stored) {
+            prefs.edit()
+                .putString(KEY_MODE, resolved.id)
+                .putBoolean(EnginePowIntro.FLAG_KEY, true)
+                .apply()
+            if (!resolved.isTor) TorStatusStore.reset()
+            if (!resolved.isPow) com.uacspoofer.mobile.engine.pow.PowStatusStore.reset()
+        }
+        return resolved
+    }
 
     fun snapshot(): EngineMode = mutableMode.value
 

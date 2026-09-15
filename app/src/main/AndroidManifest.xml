@@ -24,6 +24,7 @@
     </queries>
 
     <application
+        android:name=".UacApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:extractNativeLibs="true"
@@ -67,7 +68,7 @@
             android:name=".engine.pow.PowPsiphonService"
             android:exported="false"
             android:process=":uacpow"
-            android:stopWithTask="true" />
+            android:stopWithTask="false" />
 
         <service
             android:name=".vpn.UacQuickSettingsTileService"

@@ -10,6 +10,7 @@ import android.os.ParcelFileDescriptor
 import android.os.PowerManager
 import android.os.SystemClock
 import android.system.Os
+import com.uacspoofer.mobile.core.ConnectionStateStore
 import com.uacspoofer.mobile.logging.AppLogRepository
 import com.uacspoofer.mobile.logging.LogSource
 import com.uacspoofer.mobile.settings.AdvancedSettingsData
@@ -82,20 +83,29 @@ class PowConnectionCoordinator(
     @Volatile private var innerStarted = false
     @Volatile private var sessionMtu = PowTunRelayConfig.DEFAULT_MTU
     @Volatile private var qualityJob: Job? = null
+    @Volatile private var watchdogJob: Job? = null
     @Volatile private var retuneSignal: CompletableDeferred<Unit>? = null
     @Volatile private var lastOuterProtocol = ""
     @Volatile private var lastRetuneAt = 0L
     @Volatile private var baselineRttMs = 0L
     @Volatile private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    @Volatile private var lastNetworkKey = ""
+    @Volatile var notificationSink: ((Boolean) -> Unit)? = null
     @Volatile private var recentSamples: MutableList<Long> = mutableListOf()
     @Volatile private var ghostInFlight = AtomicBoolean(false)
     @Volatile private var lastStableAt = SystemClock.elapsedRealtime()
+    @Volatile private var restoreJob: Job? = null
+    private val restoreWaiting = AtomicBoolean(false)
+    private val restoreAttempts = AtomicInteger(0)
+    private var watchdogTx = -1L
+    private var watchdogRx = -1L
+    private var watchdogStrikes = 0
 
     val tunAddress: PowTun2Socks.PrivateAddress
         get() = PowTun2Socks.privateAddress
 
     fun isRetuning(): Boolean = retuning.get()
+
+    fun isAwaitingNetworkRestore(): Boolean = restoreWaiting.get()
 
     fun isHealthyPath(): Boolean =
         !stopRequested.get() &&
@@ -225,7 +235,6 @@ class PowConnectionCoordinator(
                     routing = true
                 }
                 innerReady = true
-                lastNetworkKey = PowNetworkScoreboard.networkKey(appContext)
                 val ready = if (proxyMode) {
                     "UAC PoW ready · Proxy SOCKS 127.0.0.1:$socksPort"
                 } else {
@@ -234,8 +243,8 @@ class PowConnectionCoordinator(
                 PowStatusStore.update(PowPhase.CONNECTED, 100, ready, outerLabel = outer)
                 AppLogRepository.success(LogSource.POW, ready)
             }
-            startQualityWatch()
-            PowPageTurbo.kick(qualityScope, socksPort)
+            startSessionWatch()
+            PowPageTurbo.kick(qualityScope, socksPort, keepWarm = !currentSettings.optimizedMode)
         } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { stop() }
             throw cancelled
@@ -252,6 +261,7 @@ class PowConnectionCoordinator(
 
     suspend fun stop() {
         stopRequested.set(true)
+        cancelNetworkRestore()
         cancelQualityWork()
         PowPageTurbo.cancel()
         connectedSignal?.cancel()
@@ -259,56 +269,68 @@ class PowConnectionCoordinator(
         lifecycle.withLock { stopLocked() }
     }
 
-    suspend fun recoverBehindTun(reason: String): Boolean {
+    fun notifyPathLost(reason: String) {
+        beginNetworkRestore(reason)
+    }
+
+    suspend fun recoverBehindTun(reason: String, force: Boolean = false): Boolean {
         if (stopRequested.get()) return false
         if (!proxyMode && !PowTun2Socks.isRunning) return false
         return retuneMutex.withLock {
             if (stopRequested.get()) return@withLock false
-            if (isHealthyPath()) return@withLock true
-            if (crashRecovers.incrementAndGet() > PowQualityPolicy.MAX_CRASH_RECOVERS) {
+            if (!force && isHealthyPath()) return@withLock true
+            if (
+                !restoreWaiting.get() &&
+                crashRecovers.incrementAndGet() > PowQualityPolicy.MAX_CRASH_RECOVERS
+            ) {
                 AppLogRepository.warning(LogSource.POW, "UAC PoW path refresh limit reached")
                 return@withLock false
             }
-            // Level B: if outer is still healthy, only rebuild inner (20s cheaper).
             val outerAlive = AetherNative.isRunning() && AetherNative.isReady()
-            if (outerAlive) {
+            val recovered = if (outerAlive) {
                 AppLogRepository.info(LogSource.POW, "Outer still healthy — inner-only rebuild")
                 retuneInnerOnly(reason)
             } else {
                 retuneLocked(reason, quality = false)
             }
+            if (recovered && currentSettings.optimizedMode) resetWatchdogBaseline()
+            recovered
         }
     }
 
-    // Level B: dedicated ConnectivityManager callback owned by PoW only.
     private fun registerNetworkCallback() {
         if (networkCallback != null) return
         val cm = appContext.getSystemService(ConnectivityManager::class.java) ?: return
         val req = NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
             .build()
         val cb = object : ConnectivityManager.NetworkCallback() {
-            override fun onLost(network: Network) {
-                if (stopRequested.get() || !innerReady) return
-                AppLogRepository.warning(LogSource.POW, "Network lost — quick inner retune")
-                qualityScope.launch { runCatching { recoverBehindTun("network lost") } }
+            override fun onAvailable(network: Network) {
+                if (
+                    !PowNetworkRestore.shouldRetryOnAvailable(
+                        waiting = restoreWaiting.get(),
+                        stopRequested = stopRequested.get(),
+                        pathReady = innerReady,
+                    )
+                ) {
+                    return
+                }
+                AppLogRepository.info(LogSource.POW, "Network restored — retrying UAC PoW now")
+                restoreAttempts.set(0)
+                scheduleRestoreAttempt("network restored", immediate = true)
             }
-            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                if (stopRequested.get() || !innerReady) return
-                val newKey = PowNetworkScoreboard.networkKey(appContext)
-                if (newKey != lastNetworkKey) {
-                    lastNetworkKey = newKey
-                    val elapsed = SystemClock.elapsedRealtime() - lastRetuneAt
-                    if (lastRetuneAt == 0L || elapsed > PowQualityPolicy.RETUNE_COOLDOWN_NETWORK_MS) {
-                        AppLogRepository.info(LogSource.POW, "Network changed $newKey — refreshing")
-                        qualityScope.launch { runCatching { requestQualityRetune("network change $newKey") } }
-                    }
+
+            override fun onLost(network: Network) {
+                if (PowNetworkRestore.shouldActOnLost()) {
+                    qualityScope.launch { runCatching { recoverBehindTun("network lost") } }
                 }
             }
         }
         runCatching { cm.registerNetworkCallback(req, cb) }
         networkCallback = cb
-        lastNetworkKey = PowNetworkScoreboard.networkKey(appContext)
     }
 
     private fun unregisterNetworkCallback() {
@@ -317,9 +339,86 @@ class PowConnectionCoordinator(
         runCatching { appContext.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) }
     }
 
+    private fun beginNetworkRestore(reason: String) {
+        if (stopRequested.get()) return
+        if (!restoreWaiting.compareAndSet(false, true)) return
+        innerReady = false
+        restoreAttempts.set(0)
+        cancelQualityWork()
+        publishReconnecting(reason)
+        registerNetworkCallback()
+        AppLogRepository.warning(LogSource.POW, "UAC PoW waiting to reconnect: $reason")
+        scheduleRestoreAttempt(reason, immediate = false)
+    }
+
+    private fun scheduleRestoreAttempt(reason: String, immediate: Boolean) {
+        restoreJob?.cancel()
+        val delayMs = if (immediate) 0L else PowNetworkRestore.delayMs(restoreAttempts.getAndIncrement())
+        restoreJob = qualityScope.launch {
+            if (delayMs > 0L) delay(delayMs)
+            if (stopRequested.get() || !restoreWaiting.get()) return@launch
+            val recovered = runCatching { recoverBehindTun(reason, force = true) }.getOrDefault(false)
+            if (recovered) {
+                finishNetworkRestore()
+            } else {
+                AppLogRepository.warning(
+                    LogSource.POW,
+                    "UAC PoW reconnect missed ($reason); waiting for the next attempt",
+                )
+                if (!stopRequested.get() && restoreWaiting.get()) {
+                    scheduleRestoreAttempt(reason, immediate = false)
+                }
+            }
+        }
+    }
+
+    private fun finishNetworkRestore() {
+        restoreWaiting.set(false)
+        restoreAttempts.set(0)
+        crashRecovers.set(0)
+        restoreJob?.cancel()
+        restoreJob = null
+        unregisterNetworkCallback()
+        publishConnected()
+        startSessionWatch()
+    }
+
+    private fun cancelNetworkRestore() {
+        restoreWaiting.set(false)
+        restoreAttempts.set(0)
+        restoreJob?.cancel()
+        restoreJob = null
+        unregisterNetworkCallback()
+    }
+
+    private fun publishReconnecting(reason: String) {
+        ConnectionStateStore.markConnecting()
+        PowStatusStore.update(
+            PowPhase.STARTING,
+            8,
+            PowNetworkRestore.statusDetail(reason),
+        )
+        notificationSink?.invoke(false)
+    }
+
+    private fun publishConnected() {
+        ConnectionStateStore.markConnecting()
+        ConnectionStateStore.markConnected()
+        val outer = PowStatusStore.status.value.outerLabel.ifBlank {
+            PowCoreConfig.outerLabel(lastOuterProtocol.ifBlank { store.rememberedOuterProtocol().orEmpty() })
+        }
+        val ready = if (proxyMode) {
+            "UAC PoW ready · Proxy SOCKS 127.0.0.1:$socksPort"
+        } else {
+            "UAC PoW ready · Tunnel VPN through Psiphon over WARP"
+        }
+        PowStatusStore.update(PowPhase.CONNECTED, 100, ready, outerLabel = outer)
+        notificationSink?.invoke(true)
+    }
+
     private suspend fun retuneInnerOnly(reason: String): Boolean {
         if (stopRequested.get()) return false
-        retuning.set(true)
+        setRetuning(true)
         PowSocksConnectOnly.setFailFast(true)
         AppLogRepository.info(LogSource.POW, "Inner-only rebuild ($reason)")
         innerReady = false
@@ -339,10 +438,14 @@ class PowConnectionCoordinator(
             ladderJob = qualityScope.launch { watchLadder() }
             withTimeout(PowQualityPolicy.INNER_RETUNE_TIMEOUT_MS) { connected.await() }
             if (stopRequested.get()) return false
-            val sample = PowPathProbe.measureMs(socksPort)
-            if (sample > 0L) baselineRttMs = sample
             lastRetuneAt = SystemClock.elapsedRealtime()
-            AppLogRepository.success(LogSource.POW, "Inner-only path rebuilt" + if (sample>0) " ${sample}ms" else "")
+            if (!currentSettings.optimizedMode) {
+                val sample = PowPathProbe.measureMs(socksPort)
+                if (sample > 0L) baselineRttMs = sample
+                AppLogRepository.success(LogSource.POW, "Inner-only path rebuilt" + if (sample > 0) " ${sample}ms" else "")
+            } else {
+                AppLogRepository.success(LogSource.POW, "Inner-only path rebuilt")
+            }
             true
         } catch (_: TimeoutCancellationException) {
             AppLogRepository.warning(LogSource.POW, "Inner-only rebuild timeout — escalating to full handover")
@@ -354,7 +457,7 @@ class PowConnectionCoordinator(
             retuneSignal = null
             innerCallbacksArmed.set(true)
             PowSocksConnectOnly.setFailFast(false)
-            retuning.set(false)
+            setRetuning(false)
         }
     }
 
@@ -507,6 +610,7 @@ class PowConnectionCoordinator(
             dataDirectory = innerDataDirectory(),
             preferredRegion = preferred,
             strategy = strategy,
+            optimizedMode = currentSettings.optimizedMode,
         )
         psiphonGeneration.set(generation)
         innerStarted = true
@@ -609,7 +713,7 @@ class PowConnectionCoordinator(
         connectedSignal?.cancel()
         connectedSignal = null
         innerReady = false
-        retuning.set(false)
+        setRetuning(false)
         innerCallbacksArmed.set(true)
         PowSocksConnectOnly.setFailFast(false)
         withContext(Dispatchers.IO + NonCancellable) {
@@ -678,10 +782,8 @@ class PowConnectionCoordinator(
                 AppLogRepository.warning(LogSource.POW, "Psiphon exited before connect; trying the next strategy")
             }
             if (innerReady) {
-                AppLogRepository.warning(LogSource.POW, "Psiphon tunnel stopped; refreshing the path")
-                qualityScope.launch {
-                    runCatching { recoverBehindTun("psiphon exited") }
-                }
+                AppLogRepository.warning(LogSource.POW, "Psiphon tunnel stopped; waiting to reconnect")
+                notifyPathLost("psiphon exited")
             }
         }
 
@@ -770,9 +872,46 @@ class PowConnectionCoordinator(
         pm?.isPowerSaveMode ?: false
     }.getOrDefault(false)
 
-    private fun startQualityWatch() {
+    private fun processesAlive(): Boolean {
+        if (stopRequested.get() || !innerReady) return false
+        if (!proxyMode && !PowTun2Socks.isRunning) return false
+        return AetherNative.isRunning()
+    }
+
+    private fun resetWatchdogBaseline() {
+        val stats = tunStats()
+        watchdogTx = stats.txBytes
+        watchdogRx = stats.rxBytes
+        watchdogStrikes = 0
+    }
+
+    private fun startSessionWatch() {
+        if (currentSettings.optimizedMode) startWatchdog() else startQualityWatch()
+    }
+
+    private fun startWatchdog() {
         qualityJob?.cancel()
-        registerNetworkCallback()
+        qualityJob = null
+        unregisterNetworkCallback()
+        watchdogJob?.cancel()
+        watchdogTx = -1L
+        watchdogRx = -1L
+        watchdogStrikes = 0
+        watchdogJob = qualityScope.launch {
+            try {
+                watchLiveness()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                AppLogRepository.debug(LogSource.POW, "Watchdog ended: ${error.message}")
+            }
+        }
+    }
+
+    private fun startQualityWatch() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+        qualityJob?.cancel()
         qualityJob = qualityScope.launch {
             try {
                 watchQuality()
@@ -787,9 +926,68 @@ class PowConnectionCoordinator(
     private fun cancelQualityWork() {
         qualityJob?.cancel()
         qualityJob = null
+        watchdogJob?.cancel()
+        watchdogJob = null
         qualityScope.coroutineContext[Job]?.cancelChildren()
         retuneSignal?.cancel()
         retuneSignal = null
+    }
+
+    private suspend fun watchLiveness() {
+        delay(PowWatchdog.SETTLE_MS)
+        if (stopRequested.get() || !innerReady) return
+        while (!stopRequested.get()) {
+            delay(PowWatchdog.INTERVAL_MS)
+            if (stopRequested.get() || retuning.get() || !innerReady) continue
+            val stats = tunStats()
+            when (
+                val verdict = PowWatchdog.judge(
+                    processesAlive = processesAlive(),
+                    txBytes = stats.txBytes,
+                    rxBytes = stats.rxBytes,
+                    previousTx = watchdogTx,
+                    previousRx = watchdogRx,
+                    screenOn = isScreenOn(),
+                    idleStrikes = watchdogStrikes,
+                )
+            ) {
+                is PowWatchdog.Verdict.Healthy -> {
+                    watchdogStrikes = 0
+                    watchdogTx = stats.txBytes
+                    watchdogRx = stats.rxBytes
+                }
+                is PowWatchdog.Verdict.Strike -> {
+                    watchdogStrikes = verdict.nextStrikes
+                    watchdogTx = stats.txBytes
+                    watchdogRx = stats.rxBytes
+                    AppLogRepository.debug(
+                        LogSource.POW,
+                        "Watchdog strike ${verdict.nextStrikes}: ${verdict.reason}",
+                    )
+                }
+                is PowWatchdog.Verdict.Dead -> {
+                    watchdogStrikes = 0
+                    watchdogTx = stats.txBytes
+                    watchdogRx = stats.rxBytes
+                    AppLogRepository.warning(LogSource.POW, "Watchdog: ${verdict.reason}")
+                    notifyPathLost(verdict.reason)
+                }
+            }
+        }
+    }
+
+    private suspend fun measureQualityProbe(): Long {
+        PowUiProbeGate.beginEngineProbe()
+        return try {
+            PowPathProbe.measureMs(socksPort)
+        } finally {
+            PowUiProbeGate.endEngineProbe()
+        }
+    }
+
+    private fun setRetuning(active: Boolean) {
+        retuning.set(active)
+        PowUiProbeGate.setRetuning(active)
     }
 
     private suspend fun watchQuality() {
@@ -799,7 +997,7 @@ class PowConnectionCoordinator(
         repeat(PowQualityPolicy.BASELINE_SAMPLES) { index ->
             while (retuning.get() && !stopRequested.get()) delay(350)
             if (stopRequested.get() || !innerReady) return
-            val sample = PowPathProbe.measureMs(socksPort)
+            val sample = measureQualityProbe()
             if (sample > 0L) opening += sample
             PowAdaptiveObfuscation.onProbe(sample > 0, false)
             if (index + 1 < PowQualityPolicy.BASELINE_SAMPLES) delay(550)
@@ -819,7 +1017,7 @@ class PowConnectionCoordinator(
             // Adaptive obfuscation check
             val elapsedStable = SystemClock.elapsedRealtime() - lastStableAt
             PowAdaptiveObfuscation.shouldDisableFragmentation(appContext, elapsedStable)
-            val sample = PowPathProbe.measureMs(socksPort)
+            val sample = measureQualityProbe()
             val jitterHigh = PowQualityPolicy.isJitterHigh(recentSamples + sample)
             PowAdaptiveObfuscation.onProbe(sample > 0L, jitterHigh)
             if (jitterHigh && sample > 0L) {
@@ -880,7 +1078,7 @@ class PowConnectionCoordinator(
 
     private suspend fun tryGhostHandover(reason: String): Boolean {
         AppLogRepository.info(LogSource.POW, "Ghost handover attempt ($reason)")
-        retuning.set(true)
+        setRetuning(true)
         // Warm shadow outer on 1821 — does not disturb live 1820.
         val shadowOuter = runCatching {
             // We cannot truly run two AetherNative instances simultaneously (native singleton),
@@ -892,16 +1090,16 @@ class PowConnectionCoordinator(
         return try {
             retuneInnerOnly("ghost:$reason")
         } catch (_: Throwable) { false }
-        finally { retuning.set(false) }
+        finally { setRetuning(false) }
     }
 
     private suspend fun retuneLocked(reason: String, quality: Boolean): Boolean {
         if (stopRequested.get()) return false
         if (!proxyMode && !PowTun2Socks.isRunning) return false
-        retuning.set(true)
+        val optimized = currentSettings.optimizedMode
+        setRetuning(true)
         PowSocksConnectOnly.setFailFast(true)
-        // Level C: drain instead of hard drop to preserve in-flight pages.
-        if (quality) PowSocksConnectOnly.drainRelaysGracefully(600)
+        if (!optimized && quality) PowSocksConnectOnly.drainRelaysGracefully(600)
         else PowSocksConnectOnly.dropRelays()
         AppLogRepository.info(
             LogSource.POW,
@@ -909,9 +1107,11 @@ class PowConnectionCoordinator(
         )
         innerReady = false
         return try {
-            val forgotten = PowCoreConfig.forgetPathMemory(appContext)
-            if (forgotten > 0) {
-                AppLogRepository.info(LogSource.POW, "Cleared $forgotten cached WARP endpoint(s) for a fresh hop")
+            if (!optimized) {
+                val forgotten = PowCoreConfig.forgetPathMemory(appContext)
+                if (forgotten > 0) {
+                    AppLogRepository.info(LogSource.POW, "Cleared $forgotten cached WARP endpoint(s) for a fresh hop")
+                }
             }
             innerCallbacksArmed.set(false)
             innerStarted = false
@@ -922,13 +1122,22 @@ class PowConnectionCoordinator(
             if (stopRequested.get()) return false
             stopOuterLeg()
             if (stopRequested.get()) return false
-            val outer = withRetuneHunt {
+            val outer = if (optimized) {
                 raiseOuterLeg(
-                    discovery = PowCoreConfig.DISCOVERY_FRESH,
-                    scanMode = PowCoreConfig.SCAN_TURBO,
+                    discovery = PowCoreConfig.DISCOVERY_CACHE,
+                    scanMode = PowCoreConfig.normalizeScanMode(currentSettings.scanMode),
                     silent = true,
                     retune = true,
                 )
+            } else {
+                withRetuneHunt {
+                    raiseOuterLeg(
+                        discovery = PowCoreConfig.DISCOVERY_FRESH,
+                        scanMode = PowCoreConfig.SCAN_TURBO,
+                        silent = true,
+                        retune = true,
+                    )
+                }
             }
             if (outer == null) {
                 AppLogRepository.warning(LogSource.POW, "Could not raise a fresh WARP hop")
@@ -953,20 +1162,23 @@ class PowConnectionCoordinator(
                 return false
             }
             if (stopRequested.get()) return false
-            // Don't drop relays on success — let pages drain
-            delay(900)
-            val sample = PowPathProbe.measureMs(socksPort)
-            if (sample > 0L) {
-                baselineRttMs = sample
-                recentSamples = mutableListOf(sample)
-                lastStableAt = SystemClock.elapsedRealtime()
-            }
             lastRetuneAt = SystemClock.elapsedRealtime()
-            PowPageTurbo.kick(qualityScope, socksPort)
-            AppLogRepository.success(
-                LogSource.POW,
-                "UAC PoW path refreshed via $outer" + if (sample > 0L) " (${sample}ms)" else "",
-            )
+            if (!optimized) {
+                delay(900)
+                val sample = PowPathProbe.measureMs(socksPort)
+                if (sample > 0L) {
+                    baselineRttMs = sample
+                    recentSamples = mutableListOf(sample)
+                    lastStableAt = SystemClock.elapsedRealtime()
+                }
+                PowPageTurbo.kick(qualityScope, socksPort, keepWarm = true)
+                AppLogRepository.success(
+                    LogSource.POW,
+                    "UAC PoW path refreshed via $outer" + if (sample > 0L) " (${sample}ms)" else "",
+                )
+            } else {
+                AppLogRepository.success(LogSource.POW, "UAC PoW path refreshed via $outer")
+            }
             true
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -977,7 +1189,7 @@ class PowConnectionCoordinator(
             retuneSignal = null
             innerCallbacksArmed.set(true)
             PowSocksConnectOnly.setFailFast(false)
-            retuning.set(false)
+            setRetuning(false)
         }
     }
 

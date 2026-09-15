@@ -88,6 +88,7 @@ internal object PowPsiphonProtocols {
         dataDirectory: String,
         preferredRegion: String?,
         strategy: PowPsiphonStrategy,
+        optimizedMode: Boolean = true,
     ): String {
         val config = JSONObject().apply {
             put("PropagationChannelId", "FFFFFFFFFFFFFFFF")
@@ -107,11 +108,11 @@ internal object PowPsiphonProtocols {
             put("ExchangeObfuscationKey", "DpXzloJk1Hw6aSzmKKky0xcahsEHubch81Mi6K0XMlU=")
             put("EmitBytesTransferred", true)
             put("DeviceRegion", "IR")
-            put("ConnectionWorkerPoolSize", 16)
+            put("ConnectionWorkerPoolSize", if (optimizedMode) 12 else 16)
             put("EmitDiagnosticNotices", true)
             put("DNSResolverPreferredAlternateServers", JSONArray(ALTERNATE_DNS))
-            put("DNSResolverPreferAlternateServerProbability", 0.35)
-            put("DNSResolverAttemptsPerPreferredServer", 1)
+            put("DNSResolverPreferAlternateServerProbability", if (optimizedMode) 1.0 else 0.35)
+            put("DNSResolverAttemptsPerPreferredServer", if (optimizedMode) 2 else 1)
             put("UpstreamProxyURL", "socks5://127.0.0.1:${PowCoreConfig.CHAIN_SOCKS_PORT}")
             put("InproxyEnabled", false)
             put("InproxyAllowClient", false)

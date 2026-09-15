@@ -33,21 +33,17 @@ import com.uacspoofer.mobile.vpn.RouteProbeBusyException
 import com.uacspoofer.mobile.vpn.RouteProbePermissionRequiredException
 import com.uacspoofer.mobile.vpn.SocksDnsProbe
 import com.uacspoofer.mobile.vpn.TunStats
+import com.uacspoofer.mobile.vpn.LivePing
 import com.uacspoofer.mobile.vpn.VpnConnectivityProbe
 import com.uacspoofer.mobile.vpn.selectSubnetDiverseEdges
 import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
-import java.io.Closeable
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.ServerSocket
-import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -191,13 +187,17 @@ class ProfileLatencyTester(context: Context) {
     )
     private val transferProbe = RouteTransferProbe()
 
+    /**
+     * Pre-connect delay for the first engine (`xray_cf`) on the Configs speed button.
+     * Spins a temporary Xray SOCKS, then probes SOCKS5 HTTP/80 generate_204.
+     */
     suspend fun measure(profile: ProxyProfile): Long =
         measureInternal(
             profile = profile,
             probeCount = PROBE_COUNT,
             minSuccessCount = MIN_SUCCESS_COUNT,
             resolveCountry = false,
-            probeTimeoutMs = PROBE_TIMEOUT_MS,
+            probeTimeoutMs = LivePing.TIMEOUT_MS,
             parallelProbes = false,
         ).latencyMs
 
@@ -1528,61 +1528,40 @@ class ProfileLatencyTester(context: Context) {
             val core = MciXrayCore(appContext)
             try {
                 val startup = core.start(edge, probeSettings, profile)
-                val samples = mutableListOf<ProbeSample>()
-                var timeoutCount = 0
+                val samples = mutableListOf<Long>()
                 var failureCount = 0
 
                 if (parallelProbes) {
                     val attempts = coroutineScope {
                         List(probeCount) {
                             async(Dispatchers.IO) {
-                                try {
-                                    val sample = ProbeSession(
-                                        probeSettings.socksAddress,
-                                        probeSettings.socksPort,
-                                        probeTimeoutMs,
-                                    ).use(ProbeSession::probe)
-                                    ProbeAttempt(sample = sample)
-                                } catch (cancelled: CancellationException) {
-                                    throw cancelled
-                                } catch (error: Throwable) {
-                                    ProbeAttempt(error = error)
-                                }
+                                LivePing.measure(
+                                    probeSettings.socksAddress,
+                                    probeSettings.socksPort,
+                                    probeTimeoutMs,
+                                )
                             }
                         }.awaitAll()
                     }
-                    attempts.forEach { attempt ->
-                        attempt.sample?.let(samples::add)
-                        when (attempt.error) {
-                            is SocketTimeoutException -> timeoutCount++
-                            null -> Unit
-                            else -> failureCount++
-                        }
+                    attempts.forEach { sample ->
+                        if (sample != null) samples += sample else failureCount++
                     }
                 } else {
-                    ProbeSession(probeSettings.socksAddress, probeSettings.socksPort, probeTimeoutMs).use { session ->
-                        repeat(probeCount) {
-                            currentCoroutineContext().ensureActive()
-                            try {
-                                samples += session.probe()
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (_: SocketTimeoutException) {
-                                timeoutCount++
-                                session.reset()
-                            } catch (_: Throwable) {
-                                failureCount++
-                                session.reset()
-                            }
-                        }
+                    repeat(probeCount) {
+                        currentCoroutineContext().ensureActive()
+                        val sample = LivePing.measure(
+                            probeSettings.socksAddress,
+                            probeSettings.socksPort,
+                            probeTimeoutMs,
+                        )
+                        if (sample != null) samples += sample else failureCount++
                     }
                 }
 
                 check(samples.size >= minSuccessCount) {
                     "Delay test had ${samples.size}/$probeCount successful probes"
                 }
-                val rawProbeMs = samples.map(ProbeSample::httpProbeMs)
-                val reportedLatencyMs = medianSuccessful(rawProbeMs)
+                val reportedLatencyMs = medianSuccessful(samples)
                 val totalTestMs = SystemClock.elapsedRealtime() - totalStarted
                 val exit = if (resolveCountry) {
                     lookupExitCountryFast(
@@ -1597,15 +1576,10 @@ class ProfileLatencyTester(context: Context) {
                     append(" configPrepareMs=${outerConfigPrepareMs + startup.configPrepareMs}")
                     append(" coreStartupMs=${startup.coreStartupMs}")
                     append(" proxyReadyMs=${startup.proxyReadyMs}")
-                    append(" dnsMs=proxy")
-                    append(" connectMs=${samples.map(ProbeSample::connectMs)}")
-                    append(" tlsHandshakeMs=${samples.map(ProbeSample::tlsHandshakeMs)}")
-                    append(" httpProbeMs=$rawProbeMs")
-                    append(" headerWaitMs=${samples.map(ProbeSample::headerWaitMs)}")
+                    append(" livePingMs=$samples")
                     append(" totalTestMs=$totalTestMs")
                     append(" reportedLatencyMs=$reportedLatencyMs")
                     append(" successCount=${samples.size}")
-                    append(" timeoutCount=$timeoutCount")
                     append(" failureCount=$failureCount")
                     if (resolveCountry) {
                         append(" exitIp=${exit.ip.ifBlank { "-" }}")
@@ -1623,7 +1597,7 @@ class ProfileLatencyTester(context: Context) {
                     candidateId = if (resolveCountry) "configs-ping" else "",
                     candidateLabel = if (resolveCountry) "Compatibility Scan" else "",
                     probeDetail = if (resolveCountry) {
-                        "HTTPS ${samples.size}/$probeCount | edge=${edge.role} | country=${exit.country.countryCode ?: "unknown"}"
+                        "HTTP ${samples.size}/$probeCount | edge=${edge.role} | country=${exit.country.countryCode ?: "unknown"}"
                     } else {
                         ""
                     },
@@ -1650,91 +1624,6 @@ class ProfileLatencyTester(context: Context) {
         } finally {
             releasePort(reservedPort)
         }
-    }
-
-    private class ProbeSession(
-        socksHost: String,
-        socksPort: Int,
-        private val timeoutMs: Int,
-    ) : Closeable {
-        private val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress(socksHost, socksPort))
-        private var socket: SSLSocket? = null
-        private var input: BufferedInputStream? = null
-        private var output: BufferedOutputStream? = null
-
-        fun probe(): ProbeSample {
-            val probeStarted = SystemClock.elapsedRealtime()
-            val connectionTiming = ensureConnected()
-            val request = buildString {
-                append("GET /generate_204?uac=${SystemClock.elapsedRealtimeNanos()} HTTP/1.1\r\n")
-                append("Host: $PROBE_HOST\r\n")
-                append("User-Agent: UAC-SNI-Spoofer-Android/0.1\r\n")
-                append("Accept: */*\r\n")
-                append("Connection: keep-alive\r\n\r\n")
-            }.toByteArray(Charsets.US_ASCII)
-
-            val headerStarted = SystemClock.elapsedRealtime()
-            output!!.write(request)
-            output!!.flush()
-            val headers = readHeaders(input!!)
-            val headersReceived = SystemClock.elapsedRealtime()
-            val code = parseStatusCode(headers)
-            check(code == 204) { "HTTP $code" }
-
-            
-            if (hasConnectionClose(headers)) reset()
-            return ProbeSample(
-                httpProbeMs = (headersReceived - probeStarted).coerceAtLeast(1L),
-                connectMs = connectionTiming.connectMs,
-                tlsHandshakeMs = connectionTiming.tlsHandshakeMs,
-                headerWaitMs = (headersReceived - headerStarted).coerceAtLeast(1L),
-            )
-        }
-
-        private fun ensureConnected(): ConnectionTiming {
-            val current = socket
-            if (current != null && current.isConnected && !current.isClosed) return ConnectionTiming.ZERO
-
-            reset()
-            val raw = Socket(proxy).apply {
-                soTimeout = timeoutMs
-                tcpNoDelay = true
-                keepAlive = true
-            }
-            val connectStarted = SystemClock.elapsedRealtime()
-            raw.connect(InetSocketAddress.createUnresolved(PROBE_HOST, PROBE_PORT), timeoutMs)
-            val connectMs = SystemClock.elapsedRealtime() - connectStarted
-
-            val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            val tls = (sslFactory.createSocket(raw, PROBE_HOST, PROBE_PORT, true) as SSLSocket).apply {
-                useClientMode = true
-                soTimeout = timeoutMs
-                sslParameters = sslParameters.apply { endpointIdentificationAlgorithm = "HTTPS" }
-            }
-            val tlsStarted = SystemClock.elapsedRealtime()
-            try {
-                tls.startHandshake()
-            } catch (error: Throwable) {
-                runCatching { tls.close() }
-                throw error
-            }
-            val tlsHandshakeMs = SystemClock.elapsedRealtime() - tlsStarted
-            socket = tls
-            input = BufferedInputStream(tls.inputStream)
-            output = BufferedOutputStream(tls.outputStream)
-            return ConnectionTiming(connectMs, tlsHandshakeMs)
-        }
-
-        fun reset() {
-            runCatching { input?.close() }
-            runCatching { output?.close() }
-            runCatching { socket?.close() }
-            input = null
-            output = null
-            socket = null
-        }
-
-        override fun close() = reset()
     }
 
     private fun reservePort(): Int {
@@ -1840,27 +1729,6 @@ class ProfileLatencyTester(context: Context) {
         }
     }
 
-    private data class ProbeSample(
-        val httpProbeMs: Long,
-        val connectMs: Long,
-        val tlsHandshakeMs: Long,
-        val headerWaitMs: Long,
-    )
-
-    private data class ProbeAttempt(
-        val sample: ProbeSample? = null,
-        val error: Throwable? = null,
-    )
-
-    private data class ConnectionTiming(
-        val connectMs: Long,
-        val tlsHandshakeMs: Long,
-    ) {
-        companion object {
-            val ZERO = ConnectionTiming(0L, 0L)
-        }
-    }
-
     private data class ExitLocation(
         val ip: String,
         val country: CountryMetadata,
@@ -1872,10 +1740,7 @@ class ProfileLatencyTester(context: Context) {
     }
 
     companion object {
-        private const val PROBE_HOST = "connectivitycheck.gstatic.com"
         private const val TAG = "UAC-RealDelay"
-        private const val PROBE_PORT = 443
-        private const val PROBE_TIMEOUT_MS = 2_000
         private const val PROBE_COUNT = 5
         private const val MIN_SUCCESS_COUNT = 2
         private const val MAKER_DEFAULT_TIMEOUT_MS = 20_000

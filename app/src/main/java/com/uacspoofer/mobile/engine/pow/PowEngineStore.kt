@@ -43,6 +43,7 @@ class PowEngineStore private constructor(context: Context) {
             .putString(KEY_OBFUSCATION, validated.obfuscationProfile)
             .putBoolean(KEY_H2_FRAGMENT, validated.h2Fragmentation)
             .putString(KEY_SCAN_MODE, validated.scanMode)
+            .putBoolean(KEY_OPTIMIZED_MODE, validated.optimizedMode)
             .apply()
         mutableSettings.value = validated
         return validated
@@ -106,6 +107,7 @@ class PowEngineStore private constructor(context: Context) {
         obfuscationProfile = prefs.getString(KEY_OBFUSCATION, "balanced").orEmpty(),
         h2Fragmentation = prefs.getBoolean(KEY_H2_FRAGMENT, false),
         scanMode = prefs.getString(KEY_SCAN_MODE, PowCoreConfig.SCAN_BALANCED).orEmpty(),
+        optimizedMode = prefs.getBoolean(KEY_OPTIMIZED_MODE, true),
     ).validated()
 
     companion object {
@@ -115,6 +117,7 @@ class PowEngineStore private constructor(context: Context) {
         private const val KEY_OBFUSCATION = "obfuscation_profile"
         private const val KEY_H2_FRAGMENT = "h2_fragmentation"
         private const val KEY_SCAN_MODE = "scan_mode"
+        private const val KEY_OPTIMIZED_MODE = "optimized_mode"
         private const val KEY_H2_QUALITY_MIGRATION = "h2_fragment_off_for_quality"
         private const val KEY_CONNECT_FIRST_MIGRATION = "connect_first_outer_v1"
         private const val KEY_OUTER_PROTOCOL = "outer_protocol"

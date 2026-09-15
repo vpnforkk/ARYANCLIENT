@@ -199,6 +199,60 @@ private fun PowSettingsPanel() {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(ToolCardBrush, ToolCardShape)
+                .border(1.dp, Color.White.copy(alpha = 0.08f), ToolCardShape)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        homeText("Optimized mode", "حالت بهینه شده"),
+                        color = UacColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        homeText(
+                            "Uses less radio after connect. Turn this off if streams stutter.",
+                            "بعد از وصل رادیو کمتر درگیر می‌شود. اگر استریم قطع‌قطع شد خاموشش کن.",
+                        ),
+                        color = UacColors.TextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Switch(
+                    checked = settings.optimizedMode,
+                    onCheckedChange = { store.save(settings.copy(optimizedMode = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = accent,
+                        checkedThumbColor = Color.White,
+                    ),
+                )
+            }
+            Text(
+                homeText(
+                    "Will be used next time you connect.",
+                    "دفعه بعد که وصل بشی اعمال میشه.",
+                ),
+                color = UacColors.TextSecondary,
+                fontSize = 11.5.sp,
+                lineHeight = 17.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+            )
+        }
+
         PowLearnedPathsCard(store = store, accent = accent)
         Column(
             modifier = Modifier

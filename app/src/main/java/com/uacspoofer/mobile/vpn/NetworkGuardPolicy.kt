@@ -6,8 +6,8 @@ object NetworkGuardPolicy {
     fun holdOnFailure(killSwitch: Boolean, proxyMode: Boolean): Boolean =
         killSwitch && !proxyMode
 
-    fun stayAliveOnSwipe(killSwitch: Boolean, autoConnect: Boolean): Boolean =
-        killSwitch || autoConnect
+    fun stayAliveOnSwipe(state: ConnectionState): Boolean =
+        state == ConnectionState.CONNECTED || state == ConnectionState.CONNECTING
 
     fun canAutoStart(
         autoConnect: Boolean,

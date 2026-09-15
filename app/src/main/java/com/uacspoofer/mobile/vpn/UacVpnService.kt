@@ -14,6 +14,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.net.VpnService
 import android.os.SystemClock
 import android.system.OsConstants
@@ -149,6 +150,9 @@ class UacVpnService : VpnService() {
         )
         powEngineStore = PowEngineStore.get(this)
         powCoordinator = PowConnectionCoordinator(this)
+        powCoordinator.notificationSink = { connected ->
+            runCatching { updateNotification(connected) }
+        }
         networkGuardStore = NetworkGuardStore.get(this)
         TunPacketFilter.applyFlags(networkGuardStore.snapshot())
         serviceScope.launch {
@@ -174,7 +178,11 @@ class UacVpnService : VpnService() {
             ACTION_CONNECT, null -> requestConnect()
         }
         val guard = networkGuardStore.snapshot()
-        return if (guard.killSwitch || guard.autoConnect) {
+        return if (
+            NetworkGuardPolicy.stayAliveOnSwipe(ConnectionStateStore.state.value) ||
+            guard.killSwitch ||
+            guard.autoConnect
+        ) {
             Service.START_STICKY
         } else {
             Service.START_NOT_STICKY
@@ -189,13 +197,12 @@ class UacVpnService : VpnService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val guard = networkGuardStore.snapshot()
-        if (NetworkGuardPolicy.stayAliveOnSwipe(guard.killSwitch, guard.autoConnect)) {
+        if (NetworkGuardPolicy.stayAliveOnSwipe(ConnectionStateStore.state.value)) {
             AppLogRepository.info(LogSource.SERVICE, "App task removed; keeping the connection")
             super.onTaskRemoved(rootIntent)
             return
         }
-        AppLogRepository.info(LogSource.SERVICE, "App task removed; disconnecting active connection")
+        AppLogRepository.info(LogSource.SERVICE, "App task removed; closing because the connection is idle")
         requestDisconnect()
         super.onTaskRemoved(rootIntent)
     }
@@ -706,8 +713,29 @@ class UacVpnService : VpnService() {
             return
         }
 
-        startLatencySampler(generation.get(), settleFirst = false)
+        latencyJob?.cancel()
+        ConnectionMetricsStore.beginLatencyMeasurement()
+        val job = serviceScope.launch {
+            try {
+                LivePing.awaitChipSlot(this@UacVpnService) {
+                    resourcesActive &&
+                        ConnectionStateStore.state.value == ConnectionState.CONNECTED
+                }
+                if (!resourcesActive) return@launch
+                val sample = runCatching { LivePing.measure(this@UacVpnService) }.getOrNull()
+                if (sample != null) ConnectionMetricsStore.publishLivePing(sample)
+                else ConnectionMetricsStore.finishLatencyMeasurement()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                AppLogRepository.warning(LogSource.SERVICE, "Latency sampling failed", error)
+                ConnectionMetricsStore.finishLatencyMeasurement()
+            }
+        }
+        latencyJob = job
+        job.invokeOnCompletion { if (latencyJob === job) latencyJob = null }
     }
+
     private suspend fun connectRoutes(
         token: Long,
         settings: AdvancedSettingsData,
@@ -874,7 +902,6 @@ class UacVpnService : VpnService() {
                         .onFailure { Log.w(TAG, "connected notification update failed", it) }
                     startHealthMonitor(token)
                     startStatsMonitor(token)
-                    startLatencySampler(token)
                     startAdaptiveLearningMonitor(token, candidate, fingerprint, profile, signature, report.score)
                     startNetworkWatch(token, fingerprint)
                     onSessionUp()
@@ -1022,7 +1049,6 @@ class UacVpnService : VpnService() {
             .onFailure { Log.w(TAG, "connected notification update failed", it) }
         if (!isProxyMode()) startStatsMonitor(token)
         startHealthMonitor(token)
-        startLatencySampler(token)
         onSessionUp()
         AppLogRepository.success(LogSource.TOR, "Tor / WebTunnel engine is active")
     }
@@ -1046,7 +1072,6 @@ class UacVpnService : VpnService() {
             .onFailure { Log.w(TAG, "connected notification update failed", it) }
         if (!isProxyMode()) startStatsMonitor(token)
         startHealthMonitor(token)
-        startLatencySampler(token)
         onSessionUp()
         AppLogRepository.success(LogSource.POW, "UAC PoW engine is active")
     }
@@ -1228,69 +1253,11 @@ class UacVpnService : VpnService() {
         runtimeHealthSuccesses.set(0L)
         ConnectionMetricsStore.reset()
         TrafficStatsStore.reset()
+        runCatching { MonthlyTrafficStore.get(this).flush() }
         if (!armed) {
             closeKillSwitchTun()
             NetworkGuardStore.setBlocking(false)
         }
-    }
-
-    private suspend fun measureRuntimeLatency(): ProbeResult {
-        if (activeEngine.isTor) {
-            val tor = torEngineStore.snapshot()
-            return connectivityProbe.verifyRuntime(
-                socksAddress = MciConfig.LOCAL_SOCKS_ADDRESS,
-                socksPort = tor.socksPort,
-                totalTimeoutMs = TOR_LATENCY_TIMEOUT_MS,
-                socketTimeoutMs = TOR_LATENCY_SOCKET_TIMEOUT_MS,
-            )
-        }
-        if (activeEngine.isPow) {
-            return connectivityProbe.verifyRuntime(
-                socksAddress = MciConfig.LOCAL_SOCKS_ADDRESS,
-                socksPort = powCoordinator.socksPort(),
-                totalTimeoutMs = TOR_LATENCY_TIMEOUT_MS,
-                socketTimeoutMs = TOR_LATENCY_SOCKET_TIMEOUT_MS,
-            )
-        }
-        return connectivityProbe.verifyRuntime()
-    }
-
-    private fun startLatencySampler(token: Long, settleFirst: Boolean = true) {
-        latencyJob?.cancel()
-        ConnectionMetricsStore.beginLatencyMeasurement()
-        val job = serviceScope.launch {
-            try {
-                val tor = activeEngine.isTor
-                val dedicated = tor || activeEngine.isPow
-                if (dedicated && settleFirst) {
-                    delay(TOR_LATENCY_SETTLE_MS)
-                    if (token != generation.get() || !resourcesActive) return@launch
-                    measureRuntimeLatency()
-                    if (token != generation.get() || !resourcesActive) return@launch
-                    delay(TOR_LATENCY_SAMPLE_DELAY_MS)
-                }
-                val samples = if (dedicated) TOR_LATENCY_SAMPLE_COUNT else LATENCY_SAMPLE_COUNT
-                val gapMs = if (dedicated) TOR_LATENCY_SAMPLE_DELAY_MS else LATENCY_SAMPLE_DELAY_MS
-                repeat(samples) { index ->
-                    if (token != generation.get() || !resourcesActive) return@launch
-                    val probe = measureRuntimeLatency()
-                    if (probe.success) ConnectionMetricsStore.addLatencySample(probe.latencyMs)
-                    if (index + 1 < samples) delay(gapMs)
-                }
-                if (token == generation.get() && resourcesActive) {
-                    ConnectionMetricsStore.finishLatencyMeasurement()
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                AppLogRepository.warning(LogSource.SERVICE, "Latency sampling failed", error)
-                if (token == generation.get() && resourcesActive) {
-                    ConnectionMetricsStore.finishLatencyMeasurement()
-                }
-            }
-        }
-        latencyJob = job
-        job.invokeOnCompletion { if (latencyJob === job) latencyJob = null }
     }
 
     private fun activeStats(): TunStats = when {
@@ -1449,12 +1416,23 @@ class UacVpnService : VpnService() {
             while (true) {
                 if (token != generation.get() || !resourcesActive) return@launch
                 TrafficStatsStore.update(activeStats(), SystemClock.elapsedRealtime())
-                delay(STATS_INTERVAL_MS)
+                delay(statsIntervalMs())
             }
         }
         statsJob = job
         job.invokeOnCompletion { if (statsJob === job) statsJob = null }
     }
+
+    private fun statsIntervalMs(): Long =
+        if (activeEngine.isPow && powEngineStore.snapshot().optimizedMode && !isScreenInteractive()) {
+            STATS_INTERVAL_SCREEN_OFF_MS
+        } else {
+            STATS_INTERVAL_MS
+        }
+
+    private fun isScreenInteractive(): Boolean = runCatching {
+        getSystemService(PowerManager::class.java)?.isInteractive ?: true
+    }.getOrDefault(true)
 
     private fun startHealthMonitor(token: Long) {
         healthJob?.cancel()
@@ -1476,7 +1454,7 @@ class UacVpnService : VpnService() {
                     continue
                 }
                 if (activeEngine.isPow) {
-                    if (powCoordinator.isRetuning()) {
+                    if (powCoordinator.isAwaitingNetworkRestore() || powCoordinator.isRetuning()) {
                         nextDelayMs = 2_000L
                         continue
                     }
@@ -1907,13 +1885,7 @@ class UacVpnService : VpnService() {
         private const val NOTIFICATION_DISCONNECT_REQUEST = 1002
         private const val NOTIFICATION_CLOSE_REQUEST = 1003
         private const val STATS_INTERVAL_MS = 5_000L
-        private const val LATENCY_SAMPLE_COUNT = 3
-        private const val TOR_LATENCY_SAMPLE_COUNT = 3
-        private const val LATENCY_SAMPLE_DELAY_MS = 350L
-        private const val TOR_LATENCY_SAMPLE_DELAY_MS = 700L
-        private const val TOR_LATENCY_SETTLE_MS = 5_000L
-        private const val TOR_LATENCY_TIMEOUT_MS = 22_000L
-        private const val TOR_LATENCY_SOCKET_TIMEOUT_MS = 12_000
+        private const val STATS_INTERVAL_SCREEN_OFF_MS = 15_000L
         private const val ADAPTIVE_STABILITY_WINDOW_MS = 60_000L
         private const val ADAPTIVE_PROBE_WARMUP_MS = 800L
         private const val POST_CONNECT_HEALTH_DELAY_MS = 8_000L

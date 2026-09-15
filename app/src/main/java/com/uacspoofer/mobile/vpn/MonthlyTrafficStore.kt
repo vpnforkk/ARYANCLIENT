@@ -1,14 +1,20 @@
 package com.uacspoofer.mobile.vpn
 
 import android.content.Context
+import com.uacspoofer.mobile.engine.EngineModeStore
+import com.uacspoofer.mobile.engine.pow.PowEngineStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class MonthlyTrafficStore private constructor(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
     private val mutableUsage = MutableStateFlow(read())
     val usage: StateFlow<MonthlyTrafficSnapshot> = mutableUsage.asStateFlow()
+
+    @Volatile private var dirty = false
+    private var lastPersistMs = 0L
 
     fun snapshot(): MonthlyTrafficSnapshot = rollover(mutableUsage.value)
 
@@ -20,7 +26,21 @@ class MonthlyTrafficStore private constructor(context: Context) {
             uploadDelta = uploadDelta,
             downloadDelta = downloadDelta,
         )
-        persist(next)
+        if (deferWrites()) {
+            mutableUsage.value = next
+            dirty = true
+            if (lastPersistMs == 0L || nowMs - lastPersistMs >= FLUSH_MS) {
+                persist(next, nowMs)
+            }
+        } else {
+            persist(next, nowMs)
+        }
+    }
+
+    @Synchronized
+    fun flush() {
+        if (!dirty) return
+        persist(mutableUsage.value, System.currentTimeMillis())
     }
 
     @Synchronized
@@ -31,7 +51,7 @@ class MonthlyTrafficStore private constructor(context: Context) {
         val month = MonthlyTrafficLedger.monthKey(nowMs)
         if (current.monthKey == month) return current
         val fresh = MonthlyTrafficSnapshot(month)
-        persist(fresh)
+        persist(fresh, nowMs)
         return fresh
     }
 
@@ -47,13 +67,20 @@ class MonthlyTrafficStore private constructor(context: Context) {
         )
     }
 
-    private fun persist(value: MonthlyTrafficSnapshot) {
+    private fun persist(value: MonthlyTrafficSnapshot, nowMs: Long = System.currentTimeMillis()) {
         prefs.edit()
             .putString(KEY_MONTH, value.monthKey)
             .putLong(KEY_UPLOAD, value.uploadBytes)
             .putLong(KEY_DOWNLOAD, value.downloadBytes)
             .apply()
         mutableUsage.value = value
+        dirty = false
+        lastPersistMs = nowMs
+    }
+
+    private fun deferWrites(): Boolean {
+        if (!EngineModeStore.get(appContext).snapshot().isPow) return false
+        return PowEngineStore.get(appContext).snapshot().optimizedMode
     }
 
     companion object {
@@ -61,6 +88,7 @@ class MonthlyTrafficStore private constructor(context: Context) {
         private const val KEY_MONTH = "month"
         private const val KEY_UPLOAD = "upload"
         private const val KEY_DOWNLOAD = "download"
+        private const val FLUSH_MS = 60_000L
 
         @Volatile private var instance: MonthlyTrafficStore? = null
 

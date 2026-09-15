@@ -41,6 +41,13 @@ object ConnectionMetricsStore {
     }
 
     @Synchronized
+    fun publishLivePing(latencyMs: Long) {
+        addLatencySample(latencyMs)
+        val built = buildMetrics(isMeasuring = false)
+        mutableMetrics.value = built.copy(latencyMs = latencyMs)
+    }
+
+    @Synchronized
     fun updateLatency(latencyMs: Long?) {
         addLatencySample(latencyMs)
         if (!mutableMetrics.value.isMeasuringLatency) {

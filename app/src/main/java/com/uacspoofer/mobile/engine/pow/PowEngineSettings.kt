@@ -6,6 +6,7 @@ data class PowEngineSettings(
     val obfuscationProfile: String = "balanced",
     val h2Fragmentation: Boolean = false,
     val scanMode: String = PowCoreConfig.SCAN_BALANCED,
+    val optimizedMode: Boolean = true,
 ) {
     fun validated(): PowEngineSettings {
         val country = PowRegions.normalize(exitCountryCode)

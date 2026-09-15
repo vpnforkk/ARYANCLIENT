@@ -24,4 +24,12 @@ class ConnectionMetricsStoreTest {
         assertFalse(ConnectionMetricsStore.metrics.value.isMeasuringLatency)
         assertEquals(210L, ConnectionMetricsStore.metrics.value.latencyMs)
     }
+
+    @Test
+    fun liveChipShowsTheLastPingNotTheMedian() {
+        ConnectionMetricsStore.publishLivePing(2_980L)
+        ConnectionMetricsStore.publishLivePing(118L)
+        assertEquals(118L, ConnectionMetricsStore.metrics.value.latencyMs)
+        assertEquals(2_980L, ConnectionMetricsStore.metrics.value.maximumLatencyMs)
+    }
 }

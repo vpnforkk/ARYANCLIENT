@@ -43,6 +43,7 @@ internal object PowStatusCopy {
             trimmed.startsWith("UAC PoW ready") -> "${homeLtr("UAC PoW")} وصله، برو حالشو ببر"
             trimmed.startsWith("Starting UAC PoW") -> "دارم ${homeLtr("UAC PoW")} رو روشن می‌کنم"
             trimmed.startsWith("Creating device") -> "دارم ${homeLtr("VPN")} گوشیت رو می‌سازم"
+            trimmed.startsWith("Reconnecting after") -> "دارم دوباره وصل میشم..."
             trimmed.startsWith("Reconnecting") -> "دارم دوباره وصل میشم"
             trimmed.isNotEmpty() -> homeLtr(trimmed)
             phase == PowPhase.OUTER -> "دارم وصل میشم..."

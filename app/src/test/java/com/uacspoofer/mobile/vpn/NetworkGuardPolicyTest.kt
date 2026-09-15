@@ -17,10 +17,12 @@ class NetworkGuardPolicyTest {
     }
 
     @Test
-    fun swipeKeepsServiceWhenArmed() {
-        assertTrue(NetworkGuardPolicy.stayAliveOnSwipe(killSwitch = true, autoConnect = false))
-        assertTrue(NetworkGuardPolicy.stayAliveOnSwipe(killSwitch = false, autoConnect = true))
-        assertFalse(NetworkGuardPolicy.stayAliveOnSwipe(killSwitch = false, autoConnect = false))
+    fun swipeKeepsServiceOnlyWhileConnectingOrConnected() {
+        assertTrue(NetworkGuardPolicy.stayAliveOnSwipe(ConnectionState.CONNECTED))
+        assertTrue(NetworkGuardPolicy.stayAliveOnSwipe(ConnectionState.CONNECTING))
+        assertFalse(NetworkGuardPolicy.stayAliveOnSwipe(ConnectionState.DISCONNECTED))
+        assertFalse(NetworkGuardPolicy.stayAliveOnSwipe(ConnectionState.DISCONNECTING))
+        assertFalse(NetworkGuardPolicy.stayAliveOnSwipe(ConnectionState.ERROR))
     }
 
     @Test

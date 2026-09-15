@@ -55,6 +55,8 @@ class PowEngineIsolationTest {
         assertEquals("WireGuard", PowCoreConfig.outerLabel("wireguard"))
         assertEquals("WoW", PowCoreConfig.outerLabel("gool"))
         assertFalse(PowEngineSettings.DEFAULT.h2Fragmentation)
+        assertTrue(PowEngineSettings.DEFAULT.optimizedMode)
+        assertFalse(PowEngineSettings(optimizedMode = false).validated().optimizedMode)
         assertEquals(PowCoreConfig.SCAN_BALANCED, PowEngineSettings.DEFAULT.scanMode)
         assertEquals(PowCoreConfig.SCAN_TURBO, PowCoreConfig.normalizeScanMode("fast"))
         assertEquals(PowCoreConfig.SCAN_TURBO, PowCoreConfig.normalizeScanMode("TURBO"))
@@ -86,6 +88,10 @@ class PowEngineIsolationTest {
         assertFalse(PowPsiphonProtocols.FAST_DIRECT.any { it.contains("MEEK") })
         assertFalse(PowPsiphonProtocols.CHAINABLE.any { it.contains("INPROXY", ignoreCase = true) })
         assertFalse(PowPsiphonProtocols.FAST_DIRECT.any { it.contains("QUIC") })
+        assertEquals(
+            listOf("208.67.222.222:5353", "9.9.9.9:9953", "208.67.220.220:5353"),
+            PowPsiphonProtocols.ALTERNATE_DNS,
+        )
     }
 
     @Test
