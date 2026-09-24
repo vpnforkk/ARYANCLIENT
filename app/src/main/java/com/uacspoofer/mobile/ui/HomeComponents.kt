@@ -131,6 +131,7 @@ internal fun HomeHeader(
     }
 
     val headerHeight = if (compact) 44.dp else 48.dp
+
     if (!engineToggleEnabled) {
         Row(
             modifier = modifier.height(headerHeight),
@@ -147,14 +148,15 @@ internal fun HomeHeader(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Menu,
-                    contentDescription = "Open navigation menu",
+                    contentDescription = "Open Aryan Client menu",
                     tint = UacColors.TextPrimary,
                     modifier = Modifier.size(iconSize),
                 )
             }
+
             Icon(
                 imageVector = Icons.Outlined.VerifiedUser,
-                contentDescription = "Connection status",
+                contentDescription = "Aryan Client connection status",
                 tint = accent,
                 modifier = Modifier.size(iconSize),
             )
@@ -178,11 +180,12 @@ internal fun HomeHeader(
         ) {
             Icon(
                 imageVector = Icons.Rounded.Menu,
-                contentDescription = "Open navigation menu",
+                contentDescription = "Open Aryan Client menu",
                 tint = UacColors.TextPrimary,
                 modifier = Modifier.size(iconSize),
             )
         }
+
         EngineSwitchRail(
             selected = engineMode,
             pending = pendingEngine,
@@ -219,44 +222,60 @@ internal fun HomeHeader(
 
 @Composable
 internal fun AppTitle(compact: Boolean, accent: Color) {
-    val engineMode = rememberDisplayedEngineMode()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(horizontal = if (compact) 56.dp else 64.dp),
+        modifier = Modifier.padding(
+            horizontal = if (compact) 56.dp else 64.dp,
+        ),
     ) {
         Text(
-            text = when {
-                engineMode.isTor -> "UAC TOR BRIDGE"
-                engineMode.isPow -> "UAC PoW"
-                else -> "UAC SNI SPOOFER"
-            },
-            fontSize = if (compact) 20.sp else 23.sp,
+            text = "ARYAN CLIENT",
+            fontSize = if (compact) 21.sp else 24.sp,
             fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 0.55.sp,
+            letterSpacing = 1.2.sp,
             textAlign = TextAlign.Center,
             style = TextStyle(
                 brush = Brush.horizontalGradient(
                     0f to accent,
-                    0.30f to Color(0xFFDFF8FF),
-                    0.58f to Color.White,
-                    0.82f to Color(0xFFB8DFFF),
+                    0.25f to Color(0xFFDFF8FF),
+                    0.50f to Color.White,
+                    0.75f to Color(0xFFB8DFFF),
                     1f to accent,
                 ),
                 shadow = Shadow(
-                    color = accent.copy(alpha = 0.62f),
-                    offset = Offset(0f, 1.5f),
-                    blurRadius = 16f,
+                    color = accent.copy(alpha = 0.65f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 18f,
                 ),
             ),
         )
-        Spacer(Modifier.height(4.dp))
+
+        Spacer(Modifier.height(5.dp))
+
+        Text(
+            text = "FAST • SECURE • STABLE",
+            color = UacColors.TextSecondary,
+            fontSize = if (compact) 8.sp else 9.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 1.4.sp,
+            textAlign = TextAlign.Center,
+        )
+
+        Spacer(Modifier.height(6.dp))
+
         Box(
             modifier = Modifier
-                .width(if (compact) 132.dp else 154.dp)
+                .width(if (compact) 135.dp else 160.dp)
                 .height(2.dp)
                 .background(
                     Brush.horizontalGradient(
-                        listOf(Color.Transparent, accent.copy(alpha = 0.95f), Color.White, accent.copy(alpha = 0.95f), Color.Transparent),
+                        listOf(
+                            Color.Transparent,
+                            accent.copy(alpha = 0.7f),
+                            Color.White,
+                            accent.copy(alpha = 0.7f),
+                            Color.Transparent,
+                        ),
                     ),
                     RoundedCornerShape(50),
                 ),
@@ -276,52 +295,85 @@ internal fun ConnectButton(
     val localizedFont = homeLocalizedFont()
     val interactionDisabled = state == ConnectionState.DISCONNECTING
     val transition = rememberInfiniteTransition(label = "connect-glow")
+
     val animatedGlow by transition.animateFloat(
         initialValue = 0.72f,
         targetValue = 1.16f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 920, easing = FastOutSlowInEasing),
+            animation = tween(
+                durationMillis = 920,
+                easing = FastOutSlowInEasing,
+            ),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "connect-glow-intensity",
     )
+
     val loadingRotation by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1_350, easing = LinearEasing),
+            animation = tween(
+                durationMillis = 1_350,
+                easing = LinearEasing,
+            ),
             repeatMode = RepeatMode.Restart,
         ),
         label = "connect-loading-rotation",
     )
+
     val loadingSweep by transition.animateFloat(
         initialValue = 58f,
         targetValue = 292f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 880, easing = FastOutSlowInEasing),
+            animation = tween(
+                durationMillis = 880,
+                easing = FastOutSlowInEasing,
+            ),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "connect-loading-sweep",
     )
-    val glowIntensity = if (state == ConnectionState.CONNECTING) animatedGlow else 1f
+
+    val glowIntensity =
+        if (state == ConnectionState.CONNECTING) animatedGlow else 1f
+
     val emphasizePersianLabel = isPersian
+
     val buttonLabel = when (state) {
-        ConnectionState.DISCONNECTED -> homeText("CONNECT", "اتصال")
-        ConnectionState.CONNECTING -> homeText("CANCEL", "لغو")
-        ConnectionState.CONNECTED -> homeText("DISCONNECT", "قطع اتصال")
-        ConnectionState.DISCONNECTING -> homeText("DISCONNECTING...", "در حال قطع...")
-        ConnectionState.ERROR -> homeText("RETRY", "تلاش دوباره")
+        ConnectionState.DISCONNECTED ->
+            homeText("CONNECT", "اتصال")
+
+        ConnectionState.CONNECTING ->
+            homeText("CANCEL", "لغو")
+
+        ConnectionState.CONNECTED ->
+            homeText("DISCONNECT", "قطع اتصال")
+
+        ConnectionState.DISCONNECTING ->
+            homeText("DISCONNECTING...", "در حال قطع...")
+
+        ConnectionState.ERROR ->
+            homeText("RETRY", "تلاش دوباره")
     }
 
     Box(
         modifier = Modifier
             .size(diameter + halo)
             .trackHomeSlot(HomeRemoteSlot.Connect)
-            .clickable(enabled = !interactionDisabled, role = Role.Button, onClick = onClick),
+            .clickable(
+                enabled = !interactionDisabled,
+                role = Role.Button,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.matchParentSize()) {
-            val center = Offset(size.width / 2f, size.height / 2f)
+            val center = Offset(
+                size.width / 2f,
+                size.height / 2f,
+            )
+
             val surfaceRadius = diameter.toPx() / 2f
             val atmosphericRadius = size.minDimension / 2f
             val haloPx = halo.toPx()
@@ -330,10 +382,18 @@ internal fun ConnectButton(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
                         0f to Color.Transparent,
-                        0.54f to accent.copy(alpha = 0.015f * glowIntensity),
-                        0.67f to accent.copy(alpha = 0.20f * glowIntensity),
-                        0.76f to accent.copy(alpha = 0.34f * glowIntensity),
-                        0.87f to accent.copy(alpha = 0.14f * glowIntensity),
+                        0.54f to accent.copy(
+                            alpha = 0.015f * glowIntensity,
+                        ),
+                        0.67f to accent.copy(
+                            alpha = 0.20f * glowIntensity,
+                        ),
+                        0.76f to accent.copy(
+                            alpha = 0.34f * glowIntensity,
+                        ),
+                        0.87f to accent.copy(
+                            alpha = 0.14f * glowIntensity,
+                        ),
                         1f to Color.Transparent,
                     ),
                     center = center,
@@ -342,34 +402,63 @@ internal fun ConnectButton(
                 center = center,
                 radius = atmosphericRadius,
             )
+
             drawCircle(
-                color = accent.copy(alpha = 0.075f * glowIntensity),
+                color = accent.copy(
+                    alpha = 0.075f * glowIntensity,
+                ),
                 radius = surfaceRadius + haloPx * 0.50f,
                 center = center,
                 style = Stroke(width = 1.dp.toPx()),
             )
+
             drawCircle(
-                color = accent.copy(alpha = 0.13f * glowIntensity),
+                color = accent.copy(
+                    alpha = 0.13f * glowIntensity,
+                ),
                 radius = surfaceRadius + haloPx * 0.33f,
                 center = center,
                 style = Stroke(width = 1.4.dp.toPx()),
             )
+
             drawCircle(
-                color = accent.copy(alpha = 0.29f * glowIntensity),
+                color = accent.copy(
+                    alpha = 0.29f * glowIntensity,
+                ),
                 radius = surfaceRadius + haloPx * 0.15f,
                 center = center,
-                style = Stroke(width = (7.dp.toPx() * (haloPx / 54.dp.toPx()).coerceIn(0.55f, 1f))),
+                style = Stroke(
+                    width = (
+                        7.dp.toPx() *
+                            (haloPx / 54.dp.toPx())
+                                .coerceIn(0.55f, 1f)
+                    ),
+                ),
             )
+
             drawCircle(
-                color = Color.White.copy(alpha = 0.10f * glowIntensity),
+                color = Color.White.copy(
+                    alpha = 0.10f * glowIntensity,
+                ),
                 radius = surfaceRadius + haloPx * 0.07f,
                 center = center,
                 style = Stroke(width = 1.2.dp.toPx()),
             )
+
             if (state == ConnectionState.CONNECTING) {
-                val progressRadius = surfaceRadius + haloPx * 0.15f
-                val progressTopLeft = Offset(center.x - progressRadius, center.y - progressRadius)
-                val progressSize = Size(progressRadius * 2f, progressRadius * 2f)
+                val progressRadius =
+                    surfaceRadius + haloPx * 0.15f
+
+                val progressTopLeft = Offset(
+                    center.x - progressRadius,
+                    center.y - progressRadius,
+                )
+
+                val progressSize = Size(
+                    progressRadius * 2f,
+                    progressRadius * 2f,
+                )
+
                 drawArc(
                     color = accent.copy(alpha = 0.09f),
                     startAngle = 0f,
@@ -379,15 +468,22 @@ internal fun ConnectButton(
                     size = progressSize,
                     style = Stroke(width = 11.dp.toPx()),
                 )
+
                 drawArc(
-                    color = accent.copy(alpha = 0.18f * animatedGlow),
+                    color = accent.copy(
+                        alpha = 0.18f * animatedGlow,
+                    ),
                     startAngle = loadingRotation,
                     sweepAngle = loadingSweep,
                     useCenter = false,
                     topLeft = progressTopLeft,
                     size = progressSize,
-                    style = Stroke(width = 15.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(
+                        width = 15.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    ),
                 )
+
                 drawArc(
                     brush = Brush.sweepGradient(
                         colorStops = arrayOf(
@@ -403,8 +499,12 @@ internal fun ConnectButton(
                     useCenter = false,
                     topLeft = progressTopLeft,
                     size = progressSize,
-                    style = Stroke(width = 4.6.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(
+                        width = 4.6.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    ),
                 )
+
                 drawArc(
                     color = Color.White.copy(alpha = 0.96f),
                     startAngle = loadingRotation + loadingSweep - 7f,
@@ -412,7 +512,10 @@ internal fun ConnectButton(
                     useCenter = false,
                     topLeft = progressTopLeft,
                     size = progressSize,
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(
+                        width = 3.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    ),
                 )
             }
         }
@@ -423,22 +526,36 @@ internal fun ConnectButton(
                 .clip(CircleShape)
                 .background(
                     brush = Brush.radialGradient(
-                        colors = listOf(UacColors.ButtonCenter, UacColors.ButtonEdge),
+                        colors = listOf(
+                            UacColors.ButtonCenter,
+                            UacColors.ButtonEdge,
+                        ),
                     ),
                     shape = CircleShape,
                 )
-                .semantics { contentDescription = buttonLabel },
+                .semantics {
+                    contentDescription = buttonLabel
+                },
             contentAlignment = Alignment.Center,
         ) {
             Canvas(modifier = Modifier.matchParentSize()) {
-                val center = Offset(size.width / 2f, size.height / 2f)
-                val outerRadius = size.minDimension / 2f - 2.dp.toPx()
+                val center = Offset(
+                    size.width / 2f,
+                    size.height / 2f,
+                )
+
+                val outerRadius =
+                    size.minDimension / 2f - 2.dp.toPx()
+
                 drawCircle(
-                    color = accent.copy(alpha = 0.34f * glowIntensity),
+                    color = accent.copy(
+                        alpha = 0.34f * glowIntensity,
+                    ),
                     radius = outerRadius,
                     center = center,
                     style = Stroke(width = 10.dp.toPx()),
                 )
+
                 drawCircle(
                     brush = Brush.sweepGradient(
                         listOf(
@@ -454,18 +571,23 @@ internal fun ConnectButton(
                     center = center,
                     style = Stroke(width = 3.2.dp.toPx()),
                 )
+
                 drawArc(
                     color = Color.White.copy(alpha = 0.34f),
                     startAngle = 208f,
                     sweepAngle = 104f,
                     useCenter = false,
-                    topLeft = Offset(2.dp.toPx(), 2.dp.toPx()),
+                    topLeft = Offset(
+                        2.dp.toPx(),
+                        2.dp.toPx(),
+                    ),
                     size = androidx.compose.ui.geometry.Size(
                         size.width - 4.dp.toPx(),
                         size.height - 4.dp.toPx(),
                     ),
                     style = Stroke(width = 0.9.dp.toPx()),
                 )
+
                 drawCircle(
                     color = UacColors.ButtonInnerRing,
                     radius = outerRadius - 6.dp.toPx(),
@@ -474,36 +596,68 @@ internal fun ConnectButton(
                 )
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Icon(
                     imageVector = Icons.Rounded.PowerSettingsNew,
                     contentDescription = null,
                     tint = accent,
-                    modifier = Modifier.size(diameter * 0.21f),
+                    modifier = Modifier.size(
+                        diameter * 0.21f,
+                    ),
                 )
-                Spacer(Modifier.height(if (diameter < 150.dp) 4.dp else 8.dp))
+
+                Spacer(
+                    Modifier.height(
+                        if (diameter < 150.dp) 4.dp else 8.dp,
+                    ),
+                )
+
                 Text(
                     text = buttonLabel,
                     color = accent,
                     fontSize = when {
-                        emphasizePersianLabel && diameter < 150.dp -> 14.sp
+                        emphasizePersianLabel &&
+                            diameter < 150.dp -> 14.sp
+
                         emphasizePersianLabel -> 18.sp
+
                         buttonLabel.length > 11 -> 10.5.sp
+
                         else -> 13.sp
                     },
-                    fontWeight = if (emphasizePersianLabel) FontWeight.Bold else FontWeight.SemiBold,
+                    fontWeight =
+                        if (emphasizePersianLabel) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.SemiBold
+                        },
                     fontFamily = localizedFont,
-                    letterSpacing = if (isPersian) 0.sp else 0.55.sp,
+                    letterSpacing =
+                        if (isPersian) 0.sp else 0.55.sp,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = TextStyle(
-                        textDirection = if (isPersian) TextDirection.Rtl else TextDirection.Content,
-                        shadow = if (emphasizePersianLabel) {
-                            Shadow(color = accent.copy(alpha = 0.42f), offset = Offset.Zero, blurRadius = 9f)
-                        } else {
-                            null
-                        },
+                        textDirection =
+                            if (isPersian) {
+                                TextDirection.Rtl
+                            } else {
+                                TextDirection.Content
+                            },
+                        shadow =
+                            if (emphasizePersianLabel) {
+                                Shadow(
+                                    color = accent.copy(
+                                        alpha = 0.42f,
+                                    ),
+                                    offset = Offset.Zero,
+                                    blurRadius = 9f,
+                                )
+                            } else {
+                                null
+                            },
                     ),
                 )
             }
@@ -512,38 +666,70 @@ internal fun ConnectButton(
 }
 
 @Composable
-internal fun ConnectionStatus(state: ConnectionState, accent: Color) {
+internal fun ConnectionStatus(
+    state: ConnectionState,
+    accent: Color,
+) {
     val isPersian = LocalHomePersian.current
     val localizedFont = homeLocalizedFont()
     val context = LocalContext.current
     val engineMode = rememberDisplayedEngineMode()
-    val advancedStore = remember(context) { AdvancedSettingsStore(context) }
+    val advancedStore = remember(context) {
+        AdvancedSettingsStore(context)
+    }
+
     val advanced by advancedStore.state.collectAsStateWithLifecycle()
     val torStatus by TorStatusStore.status.collectAsStateWithLifecycle()
     val powStatus by PowStatusStore.status.collectAsStateWithLifecycle()
     val routeProgress by ConnectionStateStore.routeProgress.collectAsStateWithLifecycle()
     val killSwitchBlocking by NetworkGuardStore.blocking.collectAsStateWithLifecycle()
-    var showRouteProgress by remember(state) { mutableStateOf(false) }
+
+    var showRouteProgress by remember(state) {
+        mutableStateOf(false)
+    }
+
     LaunchedEffect(state) {
         if (state != ConnectionState.CONNECTING) {
             showRouteProgress = false
             return@LaunchedEffect
         }
+
         showRouteProgress = false
         delay(CONNECTING_ROUTE_HINT_DELAY_MS)
         showRouteProgress = true
     }
+
     val status = when {
         killSwitchBlocking && state == ConnectionState.ERROR ->
-            homeText("Internet blocked", "اینترنت مسدود است")
+            homeText(
+                "Internet blocked",
+                "اینترنت مسدود است",
+            )
+
         else -> when (state) {
-            ConnectionState.DISCONNECTED -> homeText("Disconnected", "وصل نیست")
-            ConnectionState.CONNECTING -> homeText("Connecting...", "در حال اتصال…")
-            ConnectionState.CONNECTED -> homeText("Connected", "وصل شد")
-            ConnectionState.DISCONNECTING -> homeText("Disconnecting...", "در حال قطع...")
-            ConnectionState.ERROR -> homeText("Connection failed", "اتصال برقرار نشد")
+            ConnectionState.DISCONNECTED ->
+                homeText("Disconnected", "وصل نیست")
+
+            ConnectionState.CONNECTING ->
+                homeText("Connecting...", "در حال اتصال…")
+
+            ConnectionState.CONNECTED ->
+                homeText("Connected", "وصل شد")
+
+            ConnectionState.DISCONNECTING ->
+                homeText(
+                    "Disconnecting...",
+                    "در حال قطع...",
+                )
+
+            ConnectionState.ERROR ->
+                homeText(
+                    "Connection failed",
+                    "اتصال برقرار نشد",
+                )
         }
     }
+
     val connectingHint = when {
         engineMode.isTor -> homeText(
             TorStatusCopy.connectingHint(
@@ -561,6 +747,7 @@ internal fun ConnectionStatus(state: ConnectionState, accent: Color) {
                 showRouteProgress = showRouteProgress,
             ),
         )
+
         engineMode.isPow -> homeText(
             PowStatusCopy.connectingHint(
                 persian = false,
@@ -577,51 +764,112 @@ internal fun ConnectionStatus(state: ConnectionState, accent: Color) {
                 showRouteProgress = showRouteProgress,
             ),
         )
+
         else -> when {
-            showRouteProgress && routeProgress.isActive -> homeText(
-                "Connecting with route ${routeProgress.current}/${routeProgress.total}",
-                "اتصال با مسیر ${routeProgress.current}/${routeProgress.total}",
-            )
-            else -> homeText("Establishing a secure tunnel", "در حال ساخت اتصال امن")
-        }
-    }
-    val hint = when {
-        killSwitchBlocking && state == ConnectionState.ERROR -> homeText(
-            "Kill switch is on · tap to reconnect",
-            "کلید قطع اضطراری روشن است · برای وصل دوباره بزن",
-        )
-        else -> when (state) {
-        ConnectionState.DISCONNECTED -> homeText("Tap the button to connect", "برای وصل شدن، دکمه رو بزن")
-        ConnectionState.CONNECTING -> connectingHint
-        ConnectionState.CONNECTED -> when {
-            engineMode.isTor -> if (advanced.connectionMode == CONNECTION_MODE_PROXY) {
-                homeText("Local Tor SOCKS only · no device VPN", "فقط SOCKS محلی Tor · بدون VPN دستگاه")
-            } else {
-                homeText("Device VPN is routing through Tor", "VPN دستگاه از Tor می‌گذره")
-            }
-            engineMode.isPow -> if (advanced.connectionMode == CONNECTION_MODE_PROXY) {
-                homeText("Local UAC PoW SOCKS only · no device VPN", "فقط SOCKS محلی UAC PoW · بدون VPN دستگاه")
-            } else {
-                homeText("Device VPN is routing through UAC PoW", "VPN دستگاه از UAC PoW می‌گذره")
-            }
-            else -> homeText("Your connection is secure", "اتصال شما امنه")
-        }
-        ConnectionState.DISCONNECTING -> homeText("Closing the secure tunnel", "در حال بستن اتصال امن")
-        ConnectionState.ERROR -> when {
-            engineMode.isTor && torStatus.detail.isNotBlank() -> homeText(
-                torStatus.detail,
-                TorStatusCopy.errorHint(true, torStatus.detail) ?: torStatus.detail,
-            )
-            engineMode.isPow && powStatus.detail.isNotBlank() -> homeText(
-                powStatus.detail,
-                PowStatusCopy.errorHint(true, powStatus.detail) ?: powStatus.detail,
-            )
-            else -> homeText("Tap retry to try again", "دوباره امتحان کن")
-        }
+            showRouteProgress && routeProgress.isActive ->
+                homeText(
+                    "Connecting with route ${routeProgress.current}/${routeProgress.total}",
+                    "اتصال با مسیر ${routeProgress.current}/${routeProgress.total}",
+                )
+
+            else ->
+                homeText(
+                    "Establishing a secure tunnel",
+                    "در حال ساخت اتصال امن",
+                )
         }
     }
 
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    val hint = when {
+        killSwitchBlocking && state == ConnectionState.ERROR ->
+            homeText(
+                "Kill switch is on · tap to reconnect",
+                "کلید قطع اضطراری روشن است · برای وصل دوباره بزن",
+            )
+
+        else -> when (state) {
+            ConnectionState.DISCONNECTED ->
+                homeText(
+                    "Tap the button to connect",
+                    "برای وصل شدن، دکمه رو بزن",
+                )
+
+            ConnectionState.CONNECTING ->
+                connectingHint
+
+            ConnectionState.CONNECTED -> when {
+                engineMode.isTor ->
+                    if (advanced.connectionMode == CONNECTION_MODE_PROXY) {
+                        homeText(
+                            "Local Tor SOCKS only · no device VPN",
+                            "فقط SOCKS محلی Tor · بدون VPN دستگاه",
+                        )
+                    } else {
+                        homeText(
+                            "Device VPN is routing through Tor",
+                            "VPN دستگاه از Tor می‌گذره",
+                        )
+                    }
+
+                engineMode.isPow ->
+                    if (advanced.connectionMode == CONNECTION_MODE_PROXY) {
+                        homeText(
+                            "Local UAC PoW SOCKS only · no device VPN",
+                            "فقط SOCKS محلی UAC PoW · بدون VPN دستگاه",
+                        )
+                    } else {
+                        homeText(
+                            "Device VPN is routing through UAC PoW",
+                            "VPN دستگاه از UAC PoW می‌گذره",
+                        )
+                    }
+
+                else ->
+                    homeText(
+                        "Your connection is secure",
+                        "اتصال شما امنه",
+                    )
+            }
+
+            ConnectionState.DISCONNECTING ->
+                homeText(
+                    "Closing the secure tunnel",
+                    "در حال بستن اتصال امن",
+                )
+
+            ConnectionState.ERROR -> when {
+                engineMode.isTor &&
+                    torStatus.detail.isNotBlank() ->
+                    homeText(
+                        torStatus.detail,
+                        TorStatusCopy.errorHint(
+                            true,
+                            torStatus.detail,
+                        ) ?: torStatus.detail,
+                    )
+
+                engineMode.isPow &&
+                    powStatus.detail.isNotBlank() ->
+                    homeText(
+                        powStatus.detail,
+                        PowStatusCopy.errorHint(
+                            true,
+                            powStatus.detail,
+                        ) ?: powStatus.detail,
+                    )
+
+                else ->
+                    homeText(
+                        "Tap retry to try again",
+                        "دوباره امتحان کن",
+                    )
+            }
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(
             text = status,
             color = accent,
@@ -630,13 +878,30 @@ internal fun ConnectionStatus(state: ConnectionState, accent: Color) {
             fontFamily = localizedFont,
             textAlign = TextAlign.Center,
             style = TextStyle(
-                textDirection = if (isPersian) TextDirection.Rtl else TextDirection.Content,
+                textDirection =
+                    if (isPersian) {
+                        TextDirection.Rtl
+                    } else {
+                        TextDirection.Content
+                    },
+                shadow = Shadow(
+                    color = accent.copy(alpha = 0.25f),
+                    offset = Offset.Zero,
+                    blurRadius = 8f,
+                ),
             ),
-            modifier = if (isPersian) Modifier.widthIn(min = 180.dp) else Modifier,
+            modifier =
+                if (isPersian) {
+                    Modifier.widthIn(min = 180.dp)
+                } else {
+                    Modifier
+                },
             maxLines = 1,
             softWrap = false,
         )
+
         Spacer(Modifier.height(3.dp))
+
         Text(
             text = hint,
             color = UacColors.TextSecondary,
@@ -645,9 +910,16 @@ internal fun ConnectionStatus(state: ConnectionState, accent: Color) {
             fontFamily = localizedFont,
             textAlign = TextAlign.Center,
             style = TextStyle(
-                textDirection = if (isPersian) TextDirection.Rtl else TextDirection.Content,
+                textDirection =
+                    if (isPersian) {
+                        TextDirection.Rtl
+                    } else {
+                        TextDirection.Content
+                    },
             ),
-            modifier = Modifier.padding(horizontal = 28.dp),
+            modifier = Modifier.padding(
+                horizontal = 28.dp,
+            ),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -657,43 +929,66 @@ internal fun ConnectionStatus(state: ConnectionState, accent: Color) {
 private const val CONNECTING_ROUTE_HINT_DELAY_MS = 2_000L
 
 @Composable
-internal fun FeatureCard(accent: Color, compact: Boolean, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(if (compact) 15.dp else 17.dp)
+internal fun FeatureCard(
+    accent: Color,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(
+        if (compact) 15.dp else 17.dp,
+    )
+
     Row(
         modifier = modifier
-            .height(if (compact) 86.dp else 94.dp)
+            .height(
+                if (compact) 86.dp else 94.dp,
+            )
             .shadow(
-                elevation = 6.dp,
+                elevation = 8.dp,
                 shape = shape,
                 ambientColor = Color.Black.copy(alpha = 0.45f),
                 spotColor = Color.Black.copy(alpha = 0.55f),
             )
-            .background(UacColors.Surface.copy(alpha = 0.77f), shape)
-            .border(0.75.dp, UacColors.CardBorder, shape)
-            .padding(horizontal = 5.dp, vertical = if (compact) 8.dp else 10.dp),
+            .background(
+                UacColors.Surface.copy(alpha = 0.77f),
+                shape,
+            )
+            .border(
+                0.75.dp,
+                UacColors.CardBorder,
+                shape,
+            )
+            .padding(
+                horizontal = 5.dp,
+                vertical = if (compact) 8.dp else 10.dp,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FeatureItem(
             Icons.Outlined.VerifiedUser,
-            homeText("Secure", "امن"),
-            homeText("Encrypted", "رمزگذاری‌شده"),
+            homeText("PRIVATE", "خصوصی"),
+            homeText("Protected", "محافظت‌شده"),
             accent,
             compact,
             Modifier.weight(1f),
         )
+
         FeatureDivider()
+
         FeatureItem(
             Icons.Rounded.Bolt,
-            homeText("Fast", "سریع"),
+            homeText("FAST", "سریع"),
             homeText("Optimized", "بهینه"),
             accent,
             compact,
             Modifier.weight(1f),
         )
+
         FeatureDivider()
+
         FeatureItem(
             Icons.Rounded.Wifi,
-            homeText("Stable", "پایدار"),
+            homeText("STABLE", "پایدار"),
             homeText("Reliable", "قابل‌اعتماد"),
             accent,
             compact,
@@ -712,6 +1007,7 @@ private fun FeatureItem(
     modifier: Modifier,
 ) {
     val localizedFont = homeLocalizedFont()
+
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -721,9 +1017,17 @@ private fun FeatureItem(
             imageVector = icon,
             contentDescription = null,
             tint = accent,
-            modifier = Modifier.size(if (compact) 21.dp else 23.dp),
+            modifier = Modifier.size(
+                if (compact) 21.dp else 23.dp,
+            ),
         )
-        Spacer(Modifier.height(if (compact) 3.dp else 4.dp))
+
+        Spacer(
+            Modifier.height(
+                if (compact) 3.dp else 4.dp,
+            ),
+        )
+
         Text(
             text = title,
             color = UacColors.TextPrimary,
@@ -731,7 +1035,9 @@ private fun FeatureItem(
             fontWeight = FontWeight.Medium,
             fontFamily = localizedFont,
         )
+
         Spacer(Modifier.height(1.dp))
+
         Text(
             text = subtitle,
             color = UacColors.TextSecondary,
