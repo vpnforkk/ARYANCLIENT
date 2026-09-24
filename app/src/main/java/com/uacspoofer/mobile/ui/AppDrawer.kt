@@ -41,13 +41,8 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Speed
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.uacspoofer.mobile.engine.EngineMode
-import com.uacspoofer.mobile.engine.EngineModeStore
-import com.uacspoofer.mobile.engine.pow.PowEngineStore
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.SupportAgent
 import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -76,9 +71,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.uacspoofer.mobile.engine.EngineMode
+import com.uacspoofer.mobile.engine.EngineModeStore
+import com.uacspoofer.mobile.engine.pow.PowEngineStore
 import com.uacspoofer.mobile.ui.theme.UacColors
-import com.uacspoofer.mobile.update.AppUpdateManager
 import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 internal enum class DrawerDestination {
     HOME,
@@ -114,24 +112,88 @@ internal fun DrawerDestination.visibleFor(mode: EngineMode): Boolean = when (thi
     DrawerDestination.SNI_MAKER,
     DrawerDestination.ROUTE_SPEED_TEST,
     DrawerDestination.ADVANCED_SETTINGS -> mode.isXray
+
     DrawerDestination.POW_SETTINGS -> mode.isPow
+
     DrawerDestination.TOR_SETTINGS -> mode.isTor
+
     else -> true
 }
 
 private fun drawerItemsFor(mode: EngineMode): List<DrawerItem> = buildList {
-    add(DrawerItem(DrawerDestination.HOME, "Home", Icons.Outlined.Home))
+    add(
+        DrawerItem(
+            DrawerDestination.HOME,
+            "Home",
+            Icons.Outlined.Home,
+        )
+    )
+
     if (mode.isTor || mode.isPow) {
-        add(DrawerItem(DrawerDestination.CONFIGS, "Select country", Icons.Outlined.Public))
+        add(
+            DrawerItem(
+                DrawerDestination.CONFIGS,
+                "Select country",
+                Icons.Outlined.Public,
+            )
+        )
     } else {
-        add(DrawerItem(DrawerDestination.CONFIGS, "Configs", Icons.Outlined.Description))
-        add(DrawerItem(DrawerDestination.SNI_MAKER, "Config Maker", Icons.Outlined.Code))
-        add(DrawerItem(DrawerDestination.ROUTE_SPEED_TEST, "Route Speed Test", Icons.Outlined.Speed))
+        add(
+            DrawerItem(
+                DrawerDestination.CONFIGS,
+                "Configs",
+                Icons.Outlined.Description,
+            )
+        )
+
+        add(
+            DrawerItem(
+                DrawerDestination.SNI_MAKER,
+                "Config Maker",
+                Icons.Outlined.Code,
+            )
+        )
+
+        add(
+            DrawerItem(
+                DrawerDestination.ROUTE_SPEED_TEST,
+                "Route Speed Test",
+                Icons.Outlined.Speed,
+            )
+        )
     }
-    add(DrawerItem(DrawerDestination.LIVE_LOGS, "Logs", Icons.AutoMirrored.Outlined.ListAlt))
-    add(DrawerItem(DrawerDestination.APP_BYPASS, "App Bypass", Icons.Outlined.Block))
-    add(DrawerItem(DrawerDestination.SETTINGS, "Settings", Icons.Outlined.Settings))
-    add(DrawerItem(DrawerDestination.SUPPORT, "Support", Icons.Outlined.SupportAgent))
+
+    add(
+        DrawerItem(
+            DrawerDestination.LIVE_LOGS,
+            "Logs",
+            Icons.AutoMirrored.Outlined.ListAlt,
+        )
+    )
+
+    add(
+        DrawerItem(
+            DrawerDestination.APP_BYPASS,
+            "App Bypass",
+            Icons.Outlined.Block,
+        )
+    )
+
+    add(
+        DrawerItem(
+            DrawerDestination.SETTINGS,
+            "Settings",
+            Icons.Outlined.Settings,
+        )
+    )
+
+    /*
+     * Support / GitHub removed from the visible drawer.
+     *
+     * DrawerDestination.SUPPORT is intentionally kept in the enum
+     * so other parts of the project that may reference it do not
+     * break during compilation.
+     */
 }
 
 @Composable
@@ -143,7 +205,10 @@ internal fun DrawerOverlay(
     onLanguageSelected: (DrawerLanguage) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(tween(220)),
@@ -154,7 +219,9 @@ internal fun DrawerOverlay(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.67f))
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = remember {
+                            MutableInteractionSource()
+                        },
                         indication = null,
                         role = Role.Button,
                         onClick = onDismiss,
@@ -167,11 +234,17 @@ internal fun DrawerOverlay(
             modifier = Modifier.align(Alignment.TopStart),
             enter = slideInHorizontally(
                 initialOffsetX = { -it },
-                animationSpec = tween(310, easing = FastOutSlowInEasing),
+                animationSpec = tween(
+                    310,
+                    easing = FastOutSlowInEasing,
+                ),
             ) + fadeIn(tween(180)),
             exit = slideOutHorizontally(
                 targetOffsetX = { -it },
-                animationSpec = tween(250, easing = FastOutSlowInEasing),
+                animationSpec = tween(
+                    250,
+                    easing = FastOutSlowInEasing,
+                ),
             ) + fadeOut(tween(150)),
         ) {
             AppDrawer(
@@ -183,7 +256,11 @@ internal fun DrawerOverlay(
                     .fillMaxHeight()
                     .fillMaxWidth(0.80f)
                     .widthIn(max = 340.dp)
-                    .padding(start = 6.dp, top = 7.dp, bottom = 7.dp),
+                    .padding(
+                        start = 6.dp,
+                        top = 7.dp,
+                        bottom = 7.dp,
+                    ),
             )
         }
     }
@@ -199,139 +276,272 @@ internal fun AppDrawer(
     modifier: Modifier = Modifier,
 ) {
     val panelShape = RoundedCornerShape(28.dp)
-    val isPersian = selectedLanguage == DrawerLanguage.PERSIAN
-    val context = LocalContext.current.applicationContext
-    val engineStore = remember(context) { EngineModeStore.get(context) }
-    val engineMode by engineStore.mode.collectAsStateWithLifecycle()
-    val powStore = remember(context) { PowEngineStore.get(context) }
-    val powSettings by powStore.settings.collectAsStateWithLifecycle()
-    val items = remember(engineMode) { drawerItemsFor(engineMode) }
-    val firstItemFocus = remember { FocusRequester() }
-    val lastNavFocus = remember { FocusRequester() }
-    val optimizedFocus = remember { FocusRequester() }
-    val githubFocus = remember { FocusRequester() }
-    val languageFocus = remember { FocusRequester() }
-    val showOptimized = engineMode.isPow
-    val navBottomFocus = if (items.size <= 1) firstItemFocus else lastNavFocus
-    val supportUpFocus = if (showOptimized) optimizedFocus else navBottomFocus
 
-    LaunchedEffect(drawerOpen, items.firstOrNull()?.destination) {
-        if (!drawerOpen) return@LaunchedEffect
-        delay(80)
-        runCatching { firstItemFocus.requestFocus() }
+    val isPersian = selectedLanguage == DrawerLanguage.PERSIAN
+
+    val context = LocalContext.current.applicationContext
+
+    val engineStore = remember(context) {
+        EngineModeStore.get(context)
     }
 
-    CompositionLocalProvider(LocalHomePersian provides isPersian) {
+    val engineMode by engineStore.mode.collectAsStateWithLifecycle()
+
+    val powStore = remember(context) {
+        PowEngineStore.get(context)
+    }
+
+    val powSettings by powStore.settings.collectAsStateWithLifecycle()
+
+    val items = remember(engineMode) {
+        drawerItemsFor(engineMode)
+    }
+
+    val firstItemFocus = remember {
+        FocusRequester()
+    }
+
+    val lastNavFocus = remember {
+        FocusRequester()
+    }
+
+    val optimizedFocus = remember {
+        FocusRequester()
+    }
+
+    /*
+     * GitHub/support focus removed.
+     * Navigation now goes directly from the last menu item
+     * to the language selector.
+     */
+    val languageFocus = remember {
+        FocusRequester()
+    }
+
+    val showOptimized = engineMode.isPow
+
+    val navBottomFocus =
+        if (items.size <= 1) {
+            firstItemFocus
+        } else {
+            lastNavFocus
+        }
+
+    val supportUpFocus =
+        if (showOptimized) {
+            optimizedFocus
+        } else {
+            navBottomFocus
+        }
+
+    LaunchedEffect(
+        drawerOpen,
+        items.firstOrNull()?.destination,
+    ) {
+        if (!drawerOpen) return@LaunchedEffect
+
+        delay(80)
+
+        runCatching {
+            firstItemFocus.requestFocus()
+        }
+    }
+
+    CompositionLocalProvider(
+        LocalHomePersian provides isPersian
+    ) {
         BoxWithConstraints(
             modifier = modifier
-            .graphicsLayer()
-            .shadow(
-                elevation = 10.dp,
-                shape = panelShape,
-                ambientColor = DrawerBlue.copy(alpha = 0.16f),
-                spotColor = DrawerBlue.copy(alpha = 0.18f),
-            )
-            .clip(panelShape)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0A192C),
-                        Color(0xFF071526),
-                        Color(0xFF09182B),
+                .graphicsLayer()
+                .shadow(
+                    elevation = 10.dp,
+                    shape = panelShape,
+                    ambientColor = DrawerBlue.copy(alpha = 0.16f),
+                    spotColor = DrawerBlue.copy(alpha = 0.18f),
+                )
+                .clip(panelShape)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF0A192C),
+                            Color(0xFF071526),
+                            Color(0xFF09182B),
+                        ),
                     ),
+                )
+                .border(
+                    1.dp,
+                    Color(0x4A34516F),
+                    panelShape,
                 ),
-            )
-            .border(1.dp, Color(0x4A34516F), panelShape),
         ) {
             val compact = maxHeight < 720.dp
 
             Column(
                 modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(
-                    WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical),
-                )
-                .padding(horizontal = 17.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                    .fillMaxSize()
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Vertical,
+                        ),
+                    )
+                    .padding(horizontal = 17.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                DrawerHeader(compact = compact, engineMode = engineMode)
-            HorizontalDivider(color = DrawerDivider, thickness = 1.dp)
-            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
 
-            items.forEachIndexed { index, item ->
-                DrawerNavItem(
-                    item = item,
-                    selected = item.destination == selectedDestination,
+                DrawerHeader(
                     compact = compact,
                     engineMode = engineMode,
-                    onClick = { onDestinationSelected(item.destination) },
-                    enabled = drawerOpen,
-                    modifier = Modifier
-                        .then(if (index == 0) Modifier.focusRequester(firstItemFocus) else Modifier)
-                        .then(
-                            if (index == items.lastIndex && index != 0) {
-                                Modifier.focusRequester(lastNavFocus)
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .then(
-                            if (index == items.lastIndex) {
-                                Modifier.dpadMovesFocus(
-                                    down = if (showOptimized) optimizedFocus else githubFocus,
-                                )
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .keepFocusInDrawerHorizontally(consumeUp = index == 0),
                 )
-                if (index != items.lastIndex) {
-                    Spacer(Modifier.height(if (compact) 1.dp else 3.dp))
-                }
-            }
 
-            if (showOptimized) {
-                Spacer(Modifier.height(if (compact) 1.dp else 3.dp))
-                DrawerOptimizedSwitch(
-                    checked = powSettings.optimizedMode,
+                HorizontalDivider(
+                    color = DrawerDivider,
+                    thickness = 1.dp,
+                )
+
+                Spacer(
+                    Modifier.height(
+                        if (compact) 6.dp else 10.dp
+                    )
+                )
+
+                items.forEachIndexed { index, item ->
+
+                    DrawerNavItem(
+                        item = item,
+                        selected = item.destination == selectedDestination,
+                        compact = compact,
+                        engineMode = engineMode,
+                        onClick = {
+                            onDestinationSelected(
+                                item.destination
+                            )
+                        },
+                        enabled = drawerOpen,
+                        modifier = Modifier
+                            .then(
+                                if (index == 0) {
+                                    Modifier.focusRequester(
+                                        firstItemFocus
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .then(
+                                if (
+                                    index == items.lastIndex &&
+                                    index != 0
+                                ) {
+                                    Modifier.focusRequester(
+                                        lastNavFocus
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .then(
+                                if (index == items.lastIndex) {
+                                    Modifier.dpadMovesFocus(
+                                        down = if (showOptimized) {
+                                            optimizedFocus
+                                        } else {
+                                            languageFocus
+                                        },
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .keepFocusInDrawerHorizontally(
+                                consumeUp = index == 0
+                            ),
+                    )
+
+                    if (index != items.lastIndex) {
+                        Spacer(
+                            Modifier.height(
+                                if (compact) 1.dp else 3.dp
+                            )
+                        )
+                    }
+                }
+
+                if (showOptimized) {
+
+                    Spacer(
+                        Modifier.height(
+                            if (compact) 1.dp else 3.dp
+                        )
+                    )
+
+                    DrawerOptimizedSwitch(
+                        checked = powSettings.optimizedMode,
+                        compact = compact,
+                        enabled = drawerOpen,
+                        onCheckedChange = {
+                            powStore.save(
+                                powSettings.copy(
+                                    optimizedMode = it
+                                )
+                            )
+                        },
+                        modifier = Modifier
+                            .focusRequester(
+                                optimizedFocus
+                            )
+                            .dpadMovesFocus(
+                                down = languageFocus,
+                                up = navBottomFocus,
+                            )
+                            .keepFocusInDrawerHorizontally(),
+                    )
+                }
+
+                /*
+                 * The old GitHub/support card was here.
+                 * It has been completely removed.
+                 */
+
+                Spacer(
+                    Modifier.weight(1f)
+                )
+
+                HorizontalDivider(
+                    color = DrawerDivider,
+                    thickness = 1.dp,
+                )
+
+                Spacer(
+                    Modifier.height(
+                        if (compact) 6.dp else 10.dp
+                    )
+                )
+
+                DrawerLanguageRow(
+                    selectedLanguage = selectedLanguage,
+                    onLanguageSelected = onLanguageSelected,
                     compact = compact,
                     enabled = drawerOpen,
-                    onCheckedChange = { powStore.save(powSettings.copy(optimizedMode = it)) },
-                    modifier = Modifier
-                        .focusRequester(optimizedFocus)
-                        .dpadMovesFocus(down = githubFocus, up = navBottomFocus)
-                        .keepFocusInDrawerHorizontally(),
+                    languageFocus = languageFocus,
+                    upFocus = supportUpFocus,
                 )
-            }
 
-            Spacer(Modifier.weight(1f))
-            DrawerSupportCard(
-                compact = compact,
-                enabled = drawerOpen,
-                githubFocus = githubFocus,
-                downFocus = languageFocus,
-                upFocus = supportUpFocus,
-            )
-            Spacer(Modifier.height(if (compact) 8.dp else 12.dp))
-            HorizontalDivider(color = DrawerDivider, thickness = 1.dp)
-            Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
-            DrawerLanguageRow(
-                selectedLanguage = selectedLanguage,
-                onLanguageSelected = onLanguageSelected,
-                compact = compact,
-                enabled = drawerOpen,
-                languageFocus = languageFocus,
-                upFocus = githubFocus,
-            )
-            Spacer(Modifier.height(if (compact) 4.dp else 8.dp))
+                Spacer(
+                    Modifier.height(
+                        if (compact) 4.dp else 8.dp
+                    )
+                )
             }
         }
     }
 }
 
 @Composable
-private fun DrawerHeader(compact: Boolean, engineMode: EngineMode) {
+private fun DrawerHeader(
+    compact: Boolean,
+    engineMode: EngineMode,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -341,13 +551,22 @@ private fun DrawerHeader(compact: Boolean, engineMode: EngineMode) {
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+
         Icon(
             imageVector = Icons.Outlined.VerifiedUser,
             contentDescription = null,
             tint = DrawerBlue,
-            modifier = Modifier.size(if (compact) 28.dp else 38.dp),
+            modifier = Modifier.size(
+                if (compact) 28.dp else 38.dp
+            ),
         )
-        Spacer(Modifier.height(if (compact) 4.dp else 9.dp))
+
+        Spacer(
+            Modifier.height(
+                if (compact) 4.dp else 9.dp
+            )
+        )
+
         Text(
             text = when {
                 engineMode.isTor -> "UAC TOR BRIDGE"
@@ -360,9 +579,18 @@ private fun DrawerHeader(compact: Boolean, engineMode: EngineMode) {
             letterSpacing = (-0.3).sp,
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(if (compact) 1.dp else 3.dp))
+
+        Spacer(
+            Modifier.height(
+                if (compact) 1.dp else 3.dp
+            )
+        )
+
         Text(
-            text = homeText("Secure network tools", "ابزارهای امن شبکه"),
+            text = homeText(
+                "Secure network tools",
+                "ابزارهای امن شبکه",
+            ),
             color = DrawerMuted,
             fontSize = if (compact) 10.sp else 12.sp,
             fontWeight = FontWeight.Normal,
@@ -384,38 +612,65 @@ private fun DrawerNavItem(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(16.dp)
-    val background = if (selected) {
-        Brush.horizontalGradient(
-            colors = listOf(
-                DrawerBlue.copy(alpha = 0.18f),
-                DrawerBlue.copy(alpha = 0.075f),
-            ),
-        )
-    } else {
-        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-    }
+
+    val background =
+        if (selected) {
+            Brush.horizontalGradient(
+                colors = listOf(
+                    DrawerBlue.copy(alpha = 0.18f),
+                    DrawerBlue.copy(alpha = 0.075f),
+                ),
+            )
+        } else {
+            Brush.horizontalGradient(
+                listOf(
+                    Color.Transparent,
+                    Color.Transparent,
+                )
+            )
+        }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (compact) 35.dp else 46.dp)
+            .height(
+                if (compact) 35.dp else 46.dp
+            )
             .clip(shape)
             .background(background)
             .then(
-                if (selected) Modifier.border(1.dp, DrawerBlue.copy(alpha = 0.19f), shape)
-                else Modifier,
+                if (selected) {
+                    Modifier.border(
+                        1.dp,
+                        DrawerBlue.copy(alpha = 0.19f),
+                        shape,
+                    )
+                } else {
+                    Modifier
+                }
             )
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            ),
     ) {
+
         if (selected) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .width(3.dp)
-                    .height(if (compact) 20.dp else 26.dp)
-                    .background(DrawerBlue, RoundedCornerShape(50)),
+                    .height(
+                        if (compact) 20.dp else 26.dp
+                    )
+                    .background(
+                        DrawerBlue,
+                        RoundedCornerShape(50),
+                    ),
             )
         }
+
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -425,33 +680,86 @@ private fun DrawerNavItem(
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+
             Icon(
                 imageVector = item.icon,
                 contentDescription = null,
-                tint = if (selected) Color(0xFFAAD7FF) else Color(0xFF95A9C4),
-                modifier = Modifier.size(if (compact) 18.dp else 22.dp),
+                tint = if (selected) {
+                    Color(0xFFAAD7FF)
+                } else {
+                    Color(0xFF95A9C4)
+                },
+                modifier = Modifier.size(
+                    if (compact) 18.dp else 22.dp
+                ),
             )
-            Spacer(Modifier.width(if (compact) 11.dp else 14.dp))
+
+            Spacer(
+                Modifier.width(
+                    if (compact) 11.dp else 14.dp
+                )
+            )
+
             Text(
                 text = homeText(
                     item.label,
                     when (item.destination) {
-                        DrawerDestination.HOME -> "خانه"
-                        DrawerDestination.CONFIGS -> if (engineMode.isTor || engineMode.isPow) "انتخاب کشور" else "کانفیگ‌ها"
-                        DrawerDestination.SNI_MAKER -> "ساخت کانفیگ"
-                        DrawerDestination.ROUTE_SPEED_TEST -> "تست سرعت مسیر"
-                        DrawerDestination.LIVE_LOGS -> "لاگ‌ها"
-                        DrawerDestination.APP_BYPASS -> "عبور انتخابی برنامه‌ها"
-                        DrawerDestination.SETTINGS -> "تنظیمات"
-                        DrawerDestination.ADVANCED_SETTINGS -> "تنظیمات پیشرفته"
-                        DrawerDestination.POW_SETTINGS -> "UAC PoW"
-                        DrawerDestination.TOR_SETTINGS -> "Tor"
-                        DrawerDestination.SUPPORT -> "پشتیبانی"
+                        DrawerDestination.HOME ->
+                            "خانه"
+
+                        DrawerDestination.CONFIGS ->
+                            if (
+                                engineMode.isTor ||
+                                engineMode.isPow
+                            ) {
+                                "انتخاب کشور"
+                            } else {
+                                "کانفیگ‌ها"
+                            }
+
+                        DrawerDestination.SNI_MAKER ->
+                            "ساخت کانفیگ"
+
+                        DrawerDestination.ROUTE_SPEED_TEST ->
+                            "تست سرعت مسیر"
+
+                        DrawerDestination.LIVE_LOGS ->
+                            "لاگ‌ها"
+
+                        DrawerDestination.APP_BYPASS ->
+                            "عبور انتخابی برنامه‌ها"
+
+                        DrawerDestination.SETTINGS ->
+                            "تنظیمات"
+
+                        DrawerDestination.ADVANCED_SETTINGS ->
+                            "تنظیمات پیشرفته"
+
+                        DrawerDestination.POW_SETTINGS ->
+                            "UAC PoW"
+
+                        DrawerDestination.TOR_SETTINGS ->
+                            "Tor"
+
+                        /*
+                         * Kept only for compatibility with the enum.
+                         * It is no longer displayed in drawerItemsFor().
+                         */
+                        DrawerDestination.SUPPORT ->
+                            "پشتیبانی"
                     },
                 ),
-                color = if (selected) DrawerText else Color(0xFFC2CEE0),
+                color = if (selected) {
+                    DrawerText
+                } else {
+                    Color(0xFFC2CEE0)
+                },
                 fontSize = if (compact) 12.5.sp else 14.sp,
-                fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                fontWeight = if (selected) {
+                    FontWeight.Medium
+                } else {
+                    FontWeight.Normal
+                },
                 fontFamily = homeLocalizedFont(),
             )
         }
@@ -467,38 +775,66 @@ private fun DrawerOptimizedSwitch(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(16.dp)
-    val background = if (checked) {
-        Brush.horizontalGradient(
-            colors = listOf(
-                DrawerBlue.copy(alpha = 0.18f),
-                DrawerBlue.copy(alpha = 0.075f),
-            ),
-        )
-    } else {
-        Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-    }
+
+    val background =
+        if (checked) {
+            Brush.horizontalGradient(
+                colors = listOf(
+                    DrawerBlue.copy(alpha = 0.18f),
+                    DrawerBlue.copy(alpha = 0.075f),
+                ),
+            )
+        } else {
+            Brush.horizontalGradient(
+                listOf(
+                    Color.Transparent,
+                    Color.Transparent,
+                )
+            )
+        }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (compact) 35.dp else 46.dp)
+            .height(
+                if (compact) 35.dp else 46.dp
+            )
             .clip(shape)
             .background(background)
             .then(
-                if (checked) Modifier.border(1.dp, DrawerBlue.copy(alpha = 0.19f), shape)
-                else Modifier,
+                if (checked) {
+                    Modifier.border(
+                        1.dp,
+                        DrawerBlue.copy(alpha = 0.19f),
+                        shape,
+                    )
+                } else {
+                    Modifier
+                }
             )
-            .clickable(enabled = enabled, role = Role.Switch) { onCheckedChange(!checked) },
+            .clickable(
+                enabled = enabled,
+                role = Role.Switch,
+            ) {
+                onCheckedChange(!checked)
+            },
     ) {
+
         if (checked) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .width(3.dp)
-                    .height(if (compact) 20.dp else 26.dp)
-                    .background(DrawerBlue, RoundedCornerShape(50)),
+                    .height(
+                        if (compact) 20.dp else 26.dp
+                    )
+                    .background(
+                        DrawerBlue,
+                        RoundedCornerShape(50),
+                    ),
             )
         }
+
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -508,26 +844,53 @@ private fun DrawerOptimizedSwitch(
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+
             Icon(
                 imageVector = Icons.Outlined.Bolt,
                 contentDescription = null,
-                tint = if (checked) Color(0xFFAAD7FF) else Color(0xFF95A9C4),
-                modifier = Modifier.size(if (compact) 18.dp else 22.dp),
+                tint = if (checked) {
+                    Color(0xFFAAD7FF)
+                } else {
+                    Color(0xFF95A9C4)
+                },
+                modifier = Modifier.size(
+                    if (compact) 18.dp else 22.dp
+                ),
             )
-            Spacer(Modifier.width(if (compact) 11.dp else 14.dp))
+
+            Spacer(
+                Modifier.width(
+                    if (compact) 11.dp else 14.dp
+                )
+            )
+
             Text(
-                text = homeText("Optimized mode", "حالت بهینه شده"),
-                color = if (checked) DrawerText else Color(0xFFC2CEE0),
+                text = homeText(
+                    "Optimized mode",
+                    "حالت بهینه شده",
+                ),
+                color = if (checked) {
+                    DrawerText
+                } else {
+                    Color(0xFFC2CEE0)
+                },
                 fontSize = if (compact) 12.5.sp else 14.sp,
-                fontWeight = if (checked) FontWeight.Medium else FontWeight.Normal,
+                fontWeight = if (checked) {
+                    FontWeight.Medium
+                } else {
+                    FontWeight.Normal
+                },
                 fontFamily = homeLocalizedFont(),
                 modifier = Modifier.weight(1f),
             )
+
             Switch(
                 checked = checked,
                 onCheckedChange = null,
                 enabled = enabled,
-                modifier = Modifier.scale(if (compact) 0.72f else 0.82f),
+                modifier = Modifier.scale(
+                    if (compact) 0.72f else 0.82f
+                ),
                 colors = SwitchDefaults.colors(
                     checkedTrackColor = DrawerBlue,
                     checkedThumbColor = Color.White,
@@ -535,99 +898,6 @@ private fun DrawerOptimizedSwitch(
                     uncheckedThumbColor = Color(0xFFC2CEE0),
                     uncheckedBorderColor = Color.Transparent,
                 ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun DrawerSupportCard(
-    compact: Boolean,
-    enabled: Boolean = true,
-    githubFocus: FocusRequester,
-    downFocus: FocusRequester,
-    upFocus: FocusRequester,
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val shape = RoundedCornerShape(19.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF282058).copy(alpha = 0.90f),
-                        Color(0xFF171B42).copy(alpha = 0.90f),
-                    ),
-                ),
-                shape,
-            )
-            .border(1.dp, Color(0xFF8B5CFF).copy(alpha = 0.44f), shape)
-            .padding(if (compact) 8.dp else 13.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Outlined.Star,
-                contentDescription = null,
-                tint = Color(0xFFA579FF),
-                modifier = Modifier.size(if (compact) 18.dp else 22.dp),
-            )
-            Spacer(Modifier.width(if (compact) 7.dp else 9.dp))
-            Text(
-                text = homeText("Love the app?", "برنامه رو دوست داری؟"),
-                color = Color(0xFFF1ECFF),
-                fontSize = if (compact) 13.sp else 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                fontFamily = homeLocalizedFont(),
-            )
-        }
-        Spacer(Modifier.height(if (compact) 3.dp else 5.dp))
-        Text(
-            text = homeText(
-                "Your support helps us grow\nand build better tools.",
-                "حمایت شما کمک می‌کنه\nبرنامه بهتر بشه.",
-            ),
-            color = Color(0xFFADA8CF),
-            fontSize = if (compact) 9.5.sp else 11.5.sp,
-            lineHeight = if (compact) 13.sp else 16.sp,
-            fontFamily = homeLocalizedFont(),
-        )
-        Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (compact) 32.dp else 39.dp)
-                .clip(RoundedCornerShape(13.dp))
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(Color(0xFF6841C6), Color(0xFF3D2B79)),
-                    ),
-                )
-                .border(1.dp, Color(0xFFB28AFF).copy(alpha = 0.42f), RoundedCornerShape(13.dp))
-                .focusRequester(githubFocus)
-                .dpadMovesFocus(down = downFocus, up = upFocus)
-                .keepFocusInDrawerHorizontally()
-                .clickable(
-                    enabled = enabled,
-                    role = Role.Button,
-                    onClick = { openExternalLink(context, AppUpdateManager.REPOSITORY_URL) },
-                ),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Star,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(if (compact) 15.dp else 17.dp),
-            )
-            Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
-            Text(
-                text = homeText("Star on GitHub", "در GitHub ستاره بده"),
-                color = Color.White,
-                fontSize = if (compact) 11.sp else 12.5.sp,
-                fontWeight = FontWeight.Medium,
-                fontFamily = homeLocalizedFont(),
             )
         }
     }
@@ -642,25 +912,48 @@ private fun DrawerLanguageRow(
     languageFocus: FocusRequester,
     upFocus: FocusRequester,
 ) {
-    val persianFocus = remember { FocusRequester() }
-    val englishFocus = remember { FocusRequester() }
+    val persianFocus = remember {
+        FocusRequester()
+    }
+
+    val englishFocus = remember {
+        FocusRequester()
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (compact) 40.dp else 50.dp),
+            .height(
+                if (compact) 40.dp else 50.dp
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
             Icon(
                 imageVector = Icons.Outlined.Language,
                 contentDescription = null,
                 tint = Color(0xFFA9BAD0),
-                modifier = Modifier.size(if (compact) 18.dp else 21.dp),
+                modifier = Modifier.size(
+                    if (compact) 18.dp else 21.dp
+                ),
             )
-            Spacer(Modifier.width(if (compact) 6.dp else 8.dp))
+
+            Spacer(
+                Modifier.width(
+                    if (compact) 6.dp else 8.dp
+                )
+            )
+
             Text(
-                text = homeText("Language", "زبان"),
+                text = homeText(
+                    "Language",
+                    "زبان",
+                ),
                 color = Color(0xFFC8D4E5),
                 fontSize = if (compact) 11.sp else 12.5.sp,
                 fontWeight = FontWeight.Medium,
@@ -670,52 +963,100 @@ private fun DrawerLanguageRow(
 
         Row(
             modifier = Modifier
-                .width(if (compact) 126.dp else 142.dp)
-                .height(if (compact) 31.dp else 36.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF07111F))
-                .border(1.dp, Color(0x393B5875), RoundedCornerShape(12.dp))
+                .width(
+                    if (compact) 126.dp else 142.dp
+                )
+                .height(
+                    if (compact) 31.dp else 36.dp
+                )
+                .clip(
+                    RoundedCornerShape(12.dp)
+                )
+                .background(
+                    Color(0xFF07111F)
+                )
+                .border(
+                    1.dp,
+                    Color(0x393B5875),
+                    RoundedCornerShape(12.dp),
+                )
                 .padding(3.dp),
         ) {
+
             LanguageSegment(
                 text = "فارسی",
-                selected = selectedLanguage == DrawerLanguage.PERSIAN,
+                selected =
+                    selectedLanguage ==
+                        DrawerLanguage.PERSIAN,
                 compact = compact,
                 localizedFont = true,
-                onClick = { onLanguageSelected(DrawerLanguage.PERSIAN) },
+                onClick = {
+                    onLanguageSelected(
+                        DrawerLanguage.PERSIAN
+                    )
+                },
                 enabled = enabled,
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(persianFocus)
+                    .focusRequester(
+                        persianFocus
+                    )
                     .then(
-                        if (selectedLanguage == DrawerLanguage.PERSIAN) {
-                            Modifier.focusRequester(languageFocus)
+                        if (
+                            selectedLanguage ==
+                            DrawerLanguage.PERSIAN
+                        ) {
+                            Modifier.focusRequester(
+                                languageFocus
+                            )
                         } else {
                             Modifier
-                        },
+                        }
                     )
-                    .drawerLanguageDpad(right = englishFocus)
-                    .dpadMovesFocus(up = upFocus),
+                    .drawerLanguageDpad(
+                        right = englishFocus
+                    )
+                    .dpadMovesFocus(
+                        up = upFocus
+                    ),
             )
+
             LanguageSegment(
                 text = "English",
-                selected = selectedLanguage == DrawerLanguage.ENGLISH,
+                selected =
+                    selectedLanguage ==
+                        DrawerLanguage.ENGLISH,
                 compact = compact,
                 localizedFont = false,
-                onClick = { onLanguageSelected(DrawerLanguage.ENGLISH) },
+                onClick = {
+                    onLanguageSelected(
+                        DrawerLanguage.ENGLISH
+                    )
+                },
                 enabled = enabled,
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(englishFocus)
+                    .focusRequester(
+                        englishFocus
+                    )
                     .then(
-                        if (selectedLanguage == DrawerLanguage.ENGLISH) {
-                            Modifier.focusRequester(languageFocus)
+                        if (
+                            selectedLanguage ==
+                            DrawerLanguage.ENGLISH
+                        ) {
+                            Modifier.focusRequester(
+                                languageFocus
+                            )
                         } else {
                             Modifier
-                        },
+                        }
                     )
-                    .drawerLanguageDpad(left = persianFocus)
-                    .dpadMovesFocus(up = upFocus),
+                    .drawerLanguageDpad(
+                        left = persianFocus
+                    )
+                    .dpadMovesFocus(
+                        up = upFocus
+                    ),
             )
         }
     }
@@ -734,17 +1075,46 @@ private fun LanguageSegment(
     Box(
         modifier = modifier
             .fillMaxHeight()
-            .clip(RoundedCornerShape(9.dp))
-            .background(if (selected) DrawerBlue.copy(alpha = 0.88f) else Color.Transparent)
-            .clickable(enabled = enabled, role = Role.RadioButton, onClick = onClick),
+            .clip(
+                RoundedCornerShape(9.dp)
+            )
+            .background(
+                if (selected) {
+                    DrawerBlue.copy(alpha = 0.88f)
+                } else {
+                    Color.Transparent
+                }
+            )
+            .clickable(
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
+
         Text(
             text = text,
-            color = if (selected) Color.White else DrawerMuted,
-            fontSize = if (compact) 9.sp else 10.5.sp,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-            fontFamily = if (localizedFont) homeLocalizedFont() else null,
+            color = if (selected) {
+                Color.White
+            } else {
+                DrawerMuted
+            },
+            fontSize = if (compact) {
+                9.sp
+            } else {
+                10.5.sp
+            },
+            fontWeight = if (selected) {
+                FontWeight.Medium
+            } else {
+                FontWeight.Normal
+            },
+            fontFamily = if (localizedFont) {
+                homeLocalizedFont()
+            } else {
+                null
+            },
             maxLines = 1,
         )
     }
