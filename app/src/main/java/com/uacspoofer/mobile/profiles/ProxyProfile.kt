@@ -2,7 +2,9 @@ package com.uacspoofer.mobile.profiles
 
 import com.uacspoofer.mobile.settings.AdvancedSettingsData
 
-enum class ProxyProtocol(val wireName: String) {
+enum class ProxyProtocol(
+    val wireName: String
+) {
     TROJAN("trojan"),
     VLESS("vless"),
     VMESS("vmess"),
@@ -44,8 +46,11 @@ data class ProxyProfile(
     fun usesAdvancedSettingsIdentity(): Boolean =
         isBuiltIn && id == BUILT_IN_ID
 
-    fun runtimeIdentity(settings: AdvancedSettingsData): RuntimeProxyIdentity =
+    fun runtimeIdentity(
+        settings: AdvancedSettingsData
+    ): RuntimeProxyIdentity =
         if (usesAdvancedSettingsIdentity()) {
+
             RuntimeProxyIdentity(
                 protocol = ProxyProtocol.TROJAN,
                 credential = settings.trojanPassword,
@@ -54,10 +59,13 @@ data class ProxyProfile(
                 sni = settings.tlsSni,
                 host = settings.wsHost,
                 path = settings.wsPath,
-                alpn = TlsAlpnResolver.canonicalString(
-                    settings.tlsAlpn,
-                    settings.transportNetwork
-                ),
+
+                alpn =
+                    TlsAlpnResolver.canonicalString(
+                        settings.tlsAlpn,
+                        settings.transportNetwork
+                    ),
+
                 fingerprint = settings.tlsFingerprint,
                 allowInsecure = false,
                 flow = "",
@@ -69,10 +77,13 @@ data class ProxyProfile(
                 xhttpExtra = "",
                 packetEncoding = "",
                 headerType = "",
+
                 realityPublicKey = "",
                 realityShortId = "",
             )
+
         } else {
+
             RuntimeProxyIdentity(
                 protocol = protocol,
                 credential = credential,
@@ -81,7 +92,13 @@ data class ProxyProfile(
                 sni = sni,
                 host = host,
                 path = path,
-                alpn = TlsAlpnResolver.canonicalString(alpn, network),
+
+                alpn =
+                    TlsAlpnResolver.canonicalString(
+                        alpn,
+                        network
+                    ),
+
                 fingerprint = fingerprint,
                 allowInsecure = allowInsecure,
                 flow = flow,
@@ -93,8 +110,12 @@ data class ProxyProfile(
                 xhttpExtra = xhttpExtra,
                 packetEncoding = packetEncoding,
                 headerType = headerType,
-                realityPublicKey = realityPublicKey,
-                realityShortId = realityShortId,
+
+                realityPublicKey =
+                    realityPublicKey,
+
+                realityShortId =
+                    realityShortId,
             )
         }
 
@@ -117,7 +138,11 @@ data class ProxyProfile(
             path = "/assignment",
             alpn = "http/1.1",
             fingerprint = "chrome",
-            country = CountryMetadata.resolve("FR", "France"),
+            country =
+                CountryMetadata.resolve(
+                    "FR",
+                    "France"
+                ),
             isBuiltIn = true,
         )
 
@@ -135,21 +160,27 @@ data class ProxyProfile(
             path = "/assignment",
             alpn = "http/1.1",
             fingerprint = "chrome",
-            country = CountryMetadata.resolve("NL", "Netherlands"),
+            country =
+                CountryMetadata.resolve(
+                    "NL",
+                    "Netherlands"
+                ),
             rawUri =
                 "trojan://humanity@127.0.0.1:40443?type=ws&security=tls" +
-                "&sni=api-ir.behroozuac.dpdns.org" +
-                "&host=api-ir.behroozuac.dpdns.org" +
-                "&path=%2Fassignment&alpn=http%2F1.1&fp=chrome#humanity-user",
+                    "&sni=api-ir.behroozuac.dpdns.org" +
+                    "&host=api-ir.behroozuac.dpdns.org" +
+                    "&path=%2Fassignment" +
+                    "&alpn=http%2F1.1" +
+                    "&fp=chrome#humanity-user",
             isBuiltIn = true,
         )
 
-        // 3
         val FAST_TR_X2 = ProxyProfile(
             id = "builtin:fast-tr-x2",
             name = "⚡️Fast 🇹🇷 Turkey X2",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
             serverHost = "fastter.panelsaaz.ir",
             serverPort = 2096,
             network = "ws",
@@ -160,17 +191,67 @@ data class ProxyProfile(
             alpn = "",
             fingerprint = "",
             flow = "xtls-rprx-vision",
-            encryption = "mlkem768x25519plus.native.0rtt.COIMziHJqqejfGNE3gd7EhVJyAt6BOcVeLWw-UqPDGcqHcBvZup4_JRTQDFjk8ILEBo0OWE3CqQwfVoUYqdNcSoNiKqVQXMjOXsfDMd8IOXEQ9UdC6B8G7RNyvk_DRJNLJEL19KPWbiZKQuDzjkHCvihiolgZ5SFRLt0yHFibdR-3oFcEzJtWJZUdESiTJaIxRIkPbKr2chLxhGNRBu35SlOx4x7eaHCqYyv5aHKUQYm0aOYR8lVBZkzbqZYupUmDlBNkAhTe1XDTXs_pcgYngJQt_SCrzJkcKxI40sgMOVOwAwDDFmGInBNpTBPqdh3CfSBhOJ15fQ1WVxnc7mz0TaVKiYXNSWyMyFCf8Uln_GbRjlA2cmvgzYUEZoUroQrSJwYCjS414udf5bHB9RdDAuRGIcw84xACUJLkPxKduS4Jka-AvHOCvaoE-xoHii4LNxieGmR5sZnG5xa3qYUtOgQ2IZaONQc5ESGDRKV6-NljLTDMKZLJ4E9XHKfytB0XUdTf2oT_MkwykPBUVJ89bQgPrtf6gfMx4gM4BJbeipZfDKoUWFz_RcXL3IibKk3MXWrjbdCkzGHPbt2WGOgpKEcrkujFmI6ahll5GVMLePAvGuFPjKH8LlFK0O1vse64AKV3XFdIeqwq9Clv8p83sCwT7wr8dFA3wMqC9SY9JI8mCZRMWoVulIec5QuUzeTnitIOOC8u_cM_rY7fHeoYWCi_jxNhIu8qWSRf3LJPnArhDOKeNm0IqELHwCgcBwH_SmgcoZCKvOvK2LMlKq6pVObilx82RIMIWh-zAFRe2q4JcqgHPu0bulNF-bLa1impzkNk2suhFSII_K8QWm9f7OHieFRx3CK-hEKaqCCU1p-entVASs1iFidgDxyO_ejEvSSYBgruAcM1bQDyQFS_ty_3DgP1sGAGOuyhYsryQF2KMxm_3QB9zGWKXtbcNkDTfuS4TSinUc0xKMsDruI14BftZFW08wtxwiBQFePa0MRmNqKauIe55SRQXU96GhD4rWkcNKgK8k7ozyL8emxxoQtR1mXbVCPNgpKBWK4XqMY7InDgiSaZnCFhkWpRfV6ybtZnFYzElNtHSOcpEF36utePTElX3q08GIZbSK7CKto3pIE28nMtxuopGmoHVdkFQDQmvwRngyT4GSfUbMz5glyStVsqXu7BwodHYTNoQNSissdc8twz6d4Y_PJxlmbnURMQMut6hK1xQUfDSIKVeWCrAkXe9c6imkxMat40WvJmagXsjK9mKpIVaSNxbrM5aCs-hNxrKCqVskZn1uE2slWZUvAkOAKlsRcZDauFsXIqoQrVZWrlSi2O8lgvMKs8AFoggcmAJpSGdQoZhpsMVuPEHKkp9efa8YK0BpS9hqDxPpy7WBIbraokHyLH6XPNQG2kDwIqtCjMsALOUUWMgdZmkVgtytTQSwhlls0lagszuCTOEE5xqVfYuqhtLDNqTg1P0pdGfW3pYV6P2fA1YaDI_gWbjub-sUjkhlkJAts0BSa9amnkWgNWFB5lSIAdvVxn0oAZcbg6iBU42iJ5nJ1tYodaw0QwipdiH0eYRQ&security=tls&type=ws&headerType=none&flow=xtls-rprx-vision&path=%2Fupl&host=fastter.panelsaaz.ir&sni=fastter.panelsaaz.ir",
-            country = CountryMetadata.resolve("TR", "Turkey"),
+
+            encryption =
+                "mlkem768x25519plus.native.0rtt." +
+                    "COIMziHJqqejfGNE3gd7EhVJyAt6BOcVe" +
+                    "LWw-UqPDGcqHcBvZup4_JRTQDFjk8ILEBo0" +
+                    "OWE3CqQwfVoUYqdNcSoNiKqVQXMjOXsfDMd8" +
+                    "IOXEQ9UdC6B8G7RNyvk_DRJNLJEL19KPWbi" +
+                    "ZKQuDzjkHCvihiolgZ5SFRLt0yHFibdR-3oF" +
+                    "cEzJtWJZUdESiTJaIxRIkPbKr2chLxhGNRBu" +
+                    "35SlOx4x7eaHCqYyv5aHKUQYm0aOYR8lVBZk" +
+                    "zbqZYupUmDlBNkAhTe1XDTXs_pcgYngJQt_SC" +
+                    "rzJkcKxI40sgMOVOwAwDDFmGInBNpTBPqdh3C" +
+                    "fSBhOJ15fQ1WVxnc7mz0TaVKiYXNSWyMyFCf8U" +
+                    "ln_GbRjlA2cmvgzYUEZoUroQrSJwYCjS414ud" +
+                    "f5bHB9RdDAuRGIcw84xACUJLkPxKduS4Jka-A" +
+                    "vHOCvaoE-xoHii4LNxieGmR5sZnG5xa3qYUtO" +
+                    "gQ2IZaONQc5ESGDRKV6-NljLTDMKZL4E9XHKfy" +
+                    "tB0XUdTf2oT_MkwykPBUVJ89bQgPrtf6gfMx4g" +
+                    "M4BJbeipZfDKoUWFz_RcXL3IibKk3MXWrjbdCk" +
+                    "GHPbt2WGOgpKEcrkujFmI6ahll5GVMLePAvGu" +
+                    "FPjKH8LlFK0O1vse64AKV3XFdIeqwq9Clv8p83" +
+                    "sCwT7wr8dFA3wMqC9SY9JI8mCZRMWoVulIec5Q" +
+                    "uUzeTnitIOOC8u_cM_rY7fHeoYWCi_jxNhIu8q" +
+                    "WSRf3LJPnArhDOKeNm0IqELHwCgcBwH_SmgcoZ" +
+                    "CKvOvK2LMlKq6pVObilx82RIMIWh-zAFRe2q4Jc" +
+                    "qgHPu0bulNF-bLa1impzkNk2suhFSII_K8QWm9f7" +
+                    "OHieFRx3CK-hEKaqCCU1p-entVASs1iFidgDxy" +
+                    "O_ejEvSSYBgruAcM1bQDyQFS_ty_3DgP1sGAGO" +
+                    "uyhYsryQF2KMxm_3QB9zGWKXtbcNkDTfuS4TS" +
+                    "inUc0xKMsDruI14BftZFW08wtxwiBQFePa0MRm" +
+                    "NqKauIe55SRQXU96GhD4rWkcNKgK8k7ozyL8em" +
+                    "xxoQtR1mXbVCPNgpKBWK4XqMY7InDgiSaZnCF" +
+                    "hkWpRfV6ybtZnFYzElNtHSOcpEF36utePTElX3q" +
+                    "08GIZbSK7CKto3pIE28nMtxuopGmoHVdkFQDQm" +
+                    "vwRngyT4GSfUbMz5glyStVsqXu7BwodHYTNoQN" +
+                    "Sissdc8twz6d4Y_PJxlmbnURMQMut6hK1xQUfDS" +
+                    "IKVeWCrAkXe9c6imkxMat40WvJmagXsjK9mKpIV" +
+                    "aSNxbrM5aCs-hNxrKCqVskZn1uE2slWZUvAkOA" +
+                    "KlsRcZDauFsXIqoQrVZWrlSi2O8lgvMKs8AFogg" +
+                    "cmAJpSGdQoZhpsMVuPEHKkp9efa8YK0BpS9hqDx" +
+                    "Ppy7WBIbraokHyLH6XPNQG2kDwIqtCjMsALOUU" +
+                    "WMgdZmkVgtytTQSwhlls0lagszuCTOEE5xqVfYuq" +
+                    "htLDNqTg1P0pdGfW3pYV6P2fA1YaDI_gWbjub-s" +
+                    "UjkhlkJAts0BSa9amnkWgNWFB5lSIAdvVxn0oAZ" +
+                    "cbg6iBU42iJ5nJ1tYodaw0QwipdiH0eYRQ",
+
+            country =
+                CountryMetadata.resolve(
+                    "TR",
+                    "Turkey"
+                ),
+
             isBuiltIn = true,
         )
 
-        // 4
         val FAST_DE_X2 = ProxyProfile(
             id = "builtin:fast-de-x2",
             name = "⚡️Fast 🇩🇪 Germany X2",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
             serverHost = "fastus.panelsaaz.ir",
             serverPort = 2083,
             network = "ws",
@@ -181,18 +262,24 @@ data class ProxyProfile(
             alpn = "",
             fingerprint = "",
             flow = "xtls-rprx-vision",
-            encryption = "mlkem768x25519plus.native.0rtt.MFC6Mplb2XwpSnBGdHaNq3EUFm0cPMz-gOF9KYPVvW4",
-            country = CountryMetadata.resolve("DE", "Germany"),
+            encryption =
+                "mlkem768x25519plus.native.0rtt.MFC6Mplb2XwpSnBGdHaNq3EUFm0cPMz-gOF9KYPVvW4",
+            country =
+                CountryMetadata.resolve(
+                    "DE",
+                    "Germany"
+                ),
             isBuiltIn = true,
         )
 
-        // 5
         val TURKEY_TCP = ProxyProfile(
             id = "builtin:turkey-tcp",
             name = "🇹🇷 Turkey TCP",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
-            serverHost = "trnewpnlszhp.mamadhpbot.ir",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            serverHost =
+                "trnewpnlszhp.mamadhpbot.ir",
             serverPort = 8080,
             network = "tcp",
             security = "none",
@@ -203,17 +290,22 @@ data class ProxyProfile(
             fingerprint = "",
             encryption = "none",
             headerType = "http",
-            country = CountryMetadata.resolve("TR", "Turkey"),
+            country =
+                CountryMetadata.resolve(
+                    "TR",
+                    "Turkey"
+                ),
             isBuiltIn = true,
         )
 
-        // 6
         val BRAZIL_REALITY = ProxyProfile(
             id = "builtin:brazil-reality",
             name = "🇧🇷 Brazil",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
-            serverHost = "brazilenewab.mamadhpbot.ir",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            serverHost =
+                "brazilenewab.mamadhpbot.ir",
             serverPort = 50118,
             network = "tcp",
             security = "reality",
@@ -224,19 +316,26 @@ data class ProxyProfile(
             fingerprint = "firefox",
             encryption = "none",
             headerType = "http",
-            realityPublicKey = "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
-            realityShortId = "d4b375672913f275",
-            country = CountryMetadata.resolve("BR", "Brazil"),
+            realityPublicKey =
+                "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
+            realityShortId =
+                "d4b375672913f275",
+            country =
+                CountryMetadata.resolve(
+                    "BR",
+                    "Brazil"
+                ),
             isBuiltIn = true,
         )
 
-        // 7
         val TURKEY_REALITY = ProxyProfile(
             id = "builtin:turkey-reality",
             name = "🇹🇷 Turkey Reality",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
-            serverHost = "turkeypnlsazabc.mamadhpbot.ir",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            serverHost =
+                "turkeypnlsazabc.mamadhpbot.ir",
             serverPort = 50118,
             network = "tcp",
             security = "reality",
@@ -247,19 +346,26 @@ data class ProxyProfile(
             fingerprint = "firefox",
             encryption = "none",
             headerType = "http",
-            realityPublicKey = "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
-            realityShortId = "d4b375672913f275",
-            country = CountryMetadata.resolve("TR", "Turkey"),
+            realityPublicKey =
+                "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
+            realityShortId =
+                "d4b375672913f275",
+            country =
+                CountryMetadata.resolve(
+                    "TR",
+                    "Turkey"
+                ),
             isBuiltIn = true,
         )
 
-        // 8
         val FRANCE_REALITY = ProxyProfile(
             id = "builtin:france-reality",
             name = "🇫🇷 France Reality",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
-            serverHost = "farancendpnlsaznew.mamadhpbot.ir",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            serverHost =
+                "farancendpnlsaznew.mamadhpbot.ir",
             serverPort = 50118,
             network = "tcp",
             security = "reality",
@@ -270,19 +376,26 @@ data class ProxyProfile(
             fingerprint = "firefox",
             encryption = "none",
             headerType = "http",
-            realityPublicKey = "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
-            realityShortId = "d4b375672913f275",
-            country = CountryMetadata.resolve("FR", "France"),
+            realityPublicKey =
+                "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
+            realityShortId =
+                "d4b375672913f275",
+            country =
+                CountryMetadata.resolve(
+                    "FR",
+                    "France"
+                ),
             isBuiltIn = true,
         )
 
-        // 9
         val USA_REALITY = ProxyProfile(
             id = "builtin:usa-reality",
             name = "🇺🇸 USA MCI",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
-            serverHost = "usnodenew.mamadhpbot.ir",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            serverHost =
+                "usnodenew.mamadhpbot.ir",
             serverPort = 50118,
             network = "tcp",
             security = "reality",
@@ -293,19 +406,26 @@ data class ProxyProfile(
             fingerprint = "chrome",
             encryption = "none",
             headerType = "http",
-            realityPublicKey = "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
-            realityShortId = "d4b375672913f275",
-            country = CountryMetadata.resolve("US", "USA"),
+            realityPublicKey =
+                "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
+            realityShortId =
+                "d4b375672913f275",
+            country =
+                CountryMetadata.resolve(
+                    "US",
+                    "USA"
+                ),
             isBuiltIn = true,
         )
 
-        // 10
         val GERMANY_REALITY = ProxyProfile(
             id = "builtin:germany-reality",
             name = "🇩🇪 Germany Reality",
             protocol = ProxyProtocol.VLESS,
-            credential = "f71add53-5ff1-4946-9528-e724e91a7fb6",
-            serverHost = "germanpnlsaz.mamadhpbot.ir",
+            credential =
+                "f71add53-5ff1-4946-9528-e724e91a7fb6",
+            serverHost =
+                "germanpnlsaz.mamadhpbot.ir",
             serverPort = 50118,
             network = "tcp",
             security = "reality",
@@ -316,9 +436,15 @@ data class ProxyProfile(
             fingerprint = "chrome",
             encryption = "none",
             headerType = "http",
-            realityPublicKey = "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
-            realityShortId = "d4b375672913f275",
-            country = CountryMetadata.resolve("DE", "Germany"),
+            realityPublicKey =
+                "mH5-bF1qU4omWmdGD2IBSV4NA-gIPc96jKksAxKelUw",
+            realityShortId =
+                "d4b375672913f275",
+            country =
+                CountryMetadata.resolve(
+                    "DE",
+                    "Germany"
+                ),
             isBuiltIn = true,
         )
 
@@ -335,8 +461,12 @@ data class ProxyProfile(
             GERMANY_REALITY,
         )
 
-        fun isProtectedBuiltIn(id: String): Boolean =
-            BUILT_IN_PROFILES.any { it.id == id }
+        fun isProtectedBuiltIn(
+            id: String
+        ): Boolean =
+            BUILT_IN_PROFILES.any {
+                it.id == id
+            }
     }
 }
 
@@ -363,18 +493,26 @@ data class RuntimeProxyIdentity(
     val realityPublicKey: String = "",
     val realityShortId: String = "",
 ) {
+
     val usesTls: Boolean
-        get() = security == "tls" || security == "reality"
+        get() =
+            security == "tls" ||
+                security == "reality"
 }
 
 data class ProfileLibrary(
     val customProfiles: List<ProxyProfile>,
     val selectedId: String,
 ) {
+
     val allProfiles: List<ProxyProfile>
-        get() = ProxyProfile.BUILT_IN_PROFILES + customProfiles
+        get() =
+            ProxyProfile.BUILT_IN_PROFILES +
+                customProfiles
 
     val selectedProfile: ProxyProfile
-        get() = allProfiles.firstOrNull { it.id == selectedId }
-            ?: ProxyProfile.UAC_SNI_BUILT_IN
+        get() =
+            allProfiles.firstOrNull {
+                it.id == selectedId
+            } ?: ProxyProfile.UAC_SNI_BUILT_IN
 }
