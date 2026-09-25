@@ -10,6 +10,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 data class ProfileImportResult(
     val library: ProfileLibrary,
@@ -22,7 +24,10 @@ class ProfileStore(context: Context) {
     private val appContext = context.applicationContext
 
     private val prefs =
-        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(
+            PREFS,
+            Context.MODE_PRIVATE
+        )
 
     private val refreshExecutor =
         Executors.newSingleThreadExecutor()
@@ -30,42 +35,117 @@ class ProfileStore(context: Context) {
     private val mainHandler =
         Handler(Looper.getMainLooper())
 
-    /**
-     * آدرس سابسکریپشن آریان کلاینت
-     *
-     * برای تغییر کانفیگ‌ها فقط همین فایل sub.txt را در GitHub
-     * تغییر بده.
+    /*
+     * ============================================================
+     * آدرس Subscription آریان کلاینت
+     * ============================================================
      */
     private val subscriptionUrl =
         "https://narmafzar090.github.io/my-sub/sub.txt"
 
-    /**
-     * حداقل فاصله بین دو بار دریافت ساب
-     * 60 ثانیه
+    /*
+     * ============================================================
+     * هر چند وقت یک بار Subscription بررسی شود
+     *
+     * 60 ثانیه = 1 دقیقه
+     * ============================================================
      */
-    private val refreshIntervalMs = 60_000L
+    private val refreshIntervalMs =
+        60_000L
 
+    /*
+     * جلوگیری از اجرای همزمان چند Refresh
+     */
+    @Volatile
+    private var refreshRunning = false
+
+    private var scheduledRefresh: ScheduledFuture<*>? = null
+
+    init {
+        startAutomaticSubscriptionRefresh()
+    }
+
+    /**
+     * شروع بررسی خودکار Subscription
+     *
+     * بار اول بعد از چند ثانیه اجرا می‌شود
+     * و سپس هر 1 دقیقه تکرار می‌شود.
+     */
+    private fun startAutomaticSubscriptionRefresh() {
+
+        if (scheduledRefresh != null) {
+            return
+        }
+
+        scheduledRefresh =
+            refreshExecutor.scheduleWithFixedDelay(
+                {
+                    runCatching {
+                        refreshRemoteSubscription(
+                            force = false,
+                            onResult = null
+                        )
+                    }
+                },
+                3_000L,
+                refreshIntervalMs,
+                TimeUnit.MILLISECONDS
+            )
+    }
+
+    /**
+     * توقف Refresh خودکار
+     *
+     * در صورت نیاز از خارج کلاس قابل استفاده است.
+     */
+    fun stopAutomaticSubscriptionRefresh() {
+
+        scheduledRefresh?.cancel(false)
+        scheduledRefresh = null
+    }
+
+    /**
+     * بستن کامل Executor
+     */
+    fun shutdown() {
+
+        stopAutomaticSubscriptionRefresh()
+
+        refreshExecutor.shutdownNow()
+    }
+
+    /**
+     * دریافت وضعیت فعلی Library
+     */
     @Synchronized
     fun snapshot(): ProfileLibrary {
+
         migrateLegacyOnce()
 
-        val profiles = readProfiles()
+        val profiles =
+            readProfiles()
 
         val requested =
             prefs.getString(
                 KEY_SELECTED,
                 ProxyProfile.BUILT_IN_ID
-            ) ?: ProxyProfile.BUILT_IN_ID
+            )
+                ?: ProxyProfile.BUILT_IN_ID
 
         val selected =
             requested.takeIf { id ->
                 ProxyProfile.isProtectedBuiltIn(id) ||
                     profiles.any { it.id == id }
-            } ?: ProxyProfile.BUILT_IN_ID
+            }
+                ?: ProxyProfile.BUILT_IN_ID
 
         if (selected != requested) {
+
             prefs.edit()
-                .putString(KEY_SELECTED, selected)
+                .putString(
+                    KEY_SELECTED,
+                    selected
+                )
                 .apply()
         }
 
@@ -76,81 +156,127 @@ class ProfileStore(context: Context) {
     }
 
     /**
-     * دریافت سابسکریپشن در پس‌زمینه.
+     * دریافت Subscription
      *
-     * این تابع UI را قفل نمی‌کند.
-     *
-     * بعد از دریافت موفق، callback با Library جدید اجرا می‌شود.
+     * UI قفل نمی‌شود.
      */
     fun refreshRemoteSubscription(
         force: Boolean = false,
         onResult: ((ProfileLibrary) -> Unit)? = null,
     ) {
-        val now = System.currentTimeMillis()
+
+        if (refreshRunning) {
+            return
+        }
+
+        val now =
+            System.currentTimeMillis()
 
         val lastRefresh =
-            prefs.getLong(KEY_LAST_SUB_REFRESH, 0L)
+            prefs.getLong(
+                KEY_LAST_SUB_REFRESH,
+                0L
+            )
 
-        if (!force &&
+        if (
+            !force &&
             now - lastRefresh < refreshIntervalMs
         ) {
+
             onResult?.let { callback ->
+
                 mainHandler.post {
                     callback(snapshot())
                 }
             }
+
             return
         }
 
-        refreshExecutor.execute {
-            val result = runCatching {
-                downloadSubscription()
-            }
+        refreshRunning = true
 
-            result.onSuccess { text ->
-                val updated =
-                    synchronized(this) {
-                        updateSubscriptionProfiles(text)
+        refreshExecutor.execute {
+
+            try {
+
+                val result =
+                    runCatching {
+                        downloadSubscription()
                     }
 
-                prefs.edit()
-                    .putLong(
-                        KEY_LAST_SUB_REFRESH,
-                        System.currentTimeMillis()
-                    )
-                    .apply()
+                result
+                    .onSuccess { text ->
 
-                mainHandler.post {
-                    onResult?.invoke(updated)
-                }
-            }
+                        val updated =
+                            synchronized(this) {
+                                updateSubscriptionProfiles(
+                                    text
+                                )
+                            }
 
-            result.onFailure {
-                /*
-                 * اگر اینترنت یا GitHub در دسترس نبود،
-                 * کانفیگ‌های ذخیره‌شده قبلی باقی می‌مانند.
-                 */
-                mainHandler.post {
-                    onResult?.invoke(snapshot())
-                }
+                        prefs.edit()
+                            .putLong(
+                                KEY_LAST_SUB_REFRESH,
+                                System.currentTimeMillis()
+                            )
+                            .apply()
+
+                        mainHandler.post {
+
+                            onResult?.invoke(
+                                updated
+                            )
+                        }
+                    }
+                    .onFailure {
+
+                        mainHandler.post {
+
+                            onResult?.invoke(
+                                snapshot()
+                            )
+                        }
+                    }
+
+            } finally {
+
+                refreshRunning = false
             }
         }
     }
 
     /**
-     * دانلود فایل sub.txt
+     * دانلود فایل Subscription
      */
     private fun downloadSubscription(): String {
+
         val connection =
-            (URL(subscriptionUrl).openConnection() as HttpURLConnection).apply {
+            (
+                URL(subscriptionUrl)
+                    .openConnection()
+                    as HttpURLConnection
+            ).apply {
+
                 requestMethod = "GET"
-                connectTimeout = 10_000
-                readTimeout = 15_000
+
+                connectTimeout =
+                    10_000
+
+                readTimeout =
+                    15_000
+
                 useCaches = false
+
                 setRequestProperty(
                     "Cache-Control",
                     "no-cache"
                 )
+
+                setRequestProperty(
+                    "Pragma",
+                    "no-cache"
+                )
+
                 setRequestProperty(
                     "User-Agent",
                     "AryanClient/1.0"
@@ -158,35 +284,44 @@ class ProfileStore(context: Context) {
             }
 
         try {
+
             val responseCode =
                 connection.responseCode
 
-            require(responseCode in 200..299) {
+            require(
+                responseCode in 200..299
+            ) {
                 "Subscription HTTP error: $responseCode"
             }
 
             val text =
                 connection.inputStream
-                    .bufferedReader(Charsets.UTF_8)
-                    .use { it.readText() }
+                    .bufferedReader(
+                        Charsets.UTF_8
+                    )
+                    .use {
+                        it.readText()
+                    }
                     .trim()
 
-            require(text.isNotBlank()) {
+            require(
+                text.isNotBlank()
+            ) {
                 "Subscription is empty"
             }
 
-            return decodeSubscriptionIfNeeded(text)
+            return decodeSubscriptionIfNeeded(
+                text
+            )
+
         } finally {
+
             connection.disconnect()
         }
     }
 
     /**
-     * بعضی ساب‌ها متن عادی هستند،
-     * بعضی Base64 هستند.
-     *
-     * ابتدا متن معمولی بررسی می‌شود.
-     * اگر لینک قابل تشخیص نبود، Base64 امتحان می‌شود.
+     * تشخیص Subscription معمولی یا Base64
      */
     private fun decodeSubscriptionIfNeeded(
         text: String
@@ -214,14 +349,23 @@ class ProfileStore(context: Context) {
 
         val compact =
             normalized
-                .replace("\\s".toRegex(), "")
+                .replace(
+                    "\\s".toRegex(),
+                    ""
+                )
 
         val decoded =
             runCatching {
+
                 Base64.decode(
                     compact,
-                    Base64.DEFAULT or Base64.NO_WRAP
-                ).toString(Charsets.UTF_8)
+                    Base64.DEFAULT or
+                        Base64.NO_WRAP
+                )
+                    .toString(
+                        Charsets.UTF_8
+                    )
+
             }.getOrNull()
 
         if (
@@ -248,12 +392,9 @@ class ProfileStore(context: Context) {
     }
 
     /**
-     * کانفیگ‌های ساب را با کانفیگ‌های قبلی مقایسه می‌کند.
+     * جایگزینی کانفیگ‌های Subscription
      *
-     * کانفیگ‌هایی که source=sub دارند حذف می‌شوند
-     * و نسخه جدید از sub.txt جایگزین می‌شود.
-     *
-     * کانفیگ‌های دستی کاربر دست‌نخورده باقی می‌مانند.
+     * کانفیگ‌های دستی کاربر باقی می‌مانند.
      */
     @Synchronized
     private fun updateSubscriptionProfiles(
@@ -266,6 +407,7 @@ class ProfileStore(context: Context) {
                 .distinct()
 
         if (candidates.isEmpty()) {
+
             return snapshot()
         }
 
@@ -275,13 +417,13 @@ class ProfileStore(context: Context) {
                 .toMutableList()
 
         /*
-         * فقط کانفیگ‌هایی که از Subscription قبلی آمده‌اند
-         * حذف می‌شوند.
-         *
-         * کانفیگ دستی کاربر باقی می‌ماند.
+         * حذف نسخه قبلی کانفیگ‌های Subscription
          */
         current.removeAll { profile ->
-            isSubscriptionProfile(profile)
+
+            isSubscriptionProfile(
+                profile
+            )
         }
 
         val newProfiles =
@@ -292,7 +434,9 @@ class ProfileStore(context: Context) {
             runCatching {
 
                 val id =
-                    subscriptionProfileId(rawUri)
+                    subscriptionProfileId(
+                        rawUri
+                    )
 
                 ProfileUriParser.parse(
                     rawUri,
@@ -301,55 +445,54 @@ class ProfileStore(context: Context) {
 
             }.onSuccess { profile ->
 
-                /*
-                 * کانفیگ را با شناسه مخصوص ساب ذخیره می‌کنیم.
-                 */
                 newProfiles += profile
-
             }
         }
 
-        if (newProfiles.isNotEmpty()) {
+        if (newProfiles.isEmpty()) {
 
-            /*
-             * کانفیگ‌های جدید ساب در ابتدای لیست قرار می‌گیرند.
-             */
-            current.addAll(
-                0,
-                newProfiles
-            )
-
-            writeProfiles(
-                current.map { profile ->
-                    profile.copy(
-                        rawUri = profile.rawUri
-                    )
-                },
-                subscriptionIds =
-                    newProfiles
-                        .map { it.id }
-                        .toSet()
-            )
+            return snapshot()
         }
 
         /*
-         * اگر کانفیگ انتخاب‌شده قبلی از ساب حذف شده باشد،
-         * انتخاب را روی اولین کانفیگ معتبر می‌بریم.
+         * کانفیگ‌های جدید Subscription
+         * در ابتدای لیست قرار می‌گیرند.
          */
-        val library =
+        current.addAll(
+            0,
+            newProfiles
+        )
+
+        writeProfiles(
+            profiles = current,
+            subscriptionIds =
+                newProfiles
+                    .map {
+                        it.id
+                    }
+                    .toSet()
+        )
+
+        /*
+         * اگر کانفیگ انتخاب‌شده قبلی از Subscription
+         * حذف شده باشد، اولین کانفیگ جدید انتخاب می‌شود.
+         */
+        val after =
             snapshot()
 
-        val selectedStillExists =
-            library.allProfiles.any {
-                it.id == library.selectedId
+        val selectedExists =
+            after.allProfiles.any {
+                it.id == after.selectedId
             }
 
-        if (!selectedStillExists) {
+        if (!selectedExists) {
 
             val first =
-                library.customProfiles.firstOrNull()
+                after.customProfiles
+                    .firstOrNull()
 
             if (first != null) {
+
                 prefs.edit()
                     .putString(
                         KEY_SELECTED,
@@ -363,10 +506,7 @@ class ProfileStore(context: Context) {
     }
 
     /**
-     * تشخیص اینکه پروفایل از Subscription آمده یا نه.
-     *
-     * برای سازگاری با فایل‌های قبلی،
-     * علاوه بر ID، فیلد source هم بررسی می‌شود.
+     * تشخیص کانفیگ Subscription
      */
     private fun isSubscriptionProfile(
         profile: ProxyProfile
@@ -384,10 +524,10 @@ class ProfileStore(context: Context) {
     }
 
     /**
-     * برای هر URI یک ID ثابت می‌سازیم.
+     * ساخت ID ثابت برای هر URI
      *
-     * بنابراین اگر کانفیگ در sub.txt جابه‌جا شود،
-     * ID آن عوض نمی‌شود.
+     * اگر ترتیب کانفیگ‌ها عوض شود،
+     * ID آن‌ها تغییر نمی‌کند.
      */
     private fun subscriptionProfileId(
         uri: String
@@ -398,19 +538,27 @@ class ProfileStore(context: Context) {
                 "SHA-256"
             ).digest(
                 uri.trim()
-                    .toByteArray(Charsets.UTF_8)
+                    .toByteArray(
+                        Charsets.UTF_8
+                    )
             )
 
         val hash =
             digest.joinToString("") {
+
                 "%02x".format(it)
             }
 
         return "$SUBSCRIPTION_ID_PREFIX${hash.take(32)}"
     }
 
+    /**
+     * انتخاب کانفیگ
+     */
     @Synchronized
-    fun select(id: String): ProfileLibrary {
+    fun select(
+        id: String
+    ): ProfileLibrary {
 
         val current =
             snapshot()
@@ -435,6 +583,9 @@ class ProfileStore(context: Context) {
         )
     }
 
+    /**
+     * وارد کردن کانفیگ دستی
+     */
     @Synchronized
     fun importText(
         text: String,
@@ -446,29 +597,36 @@ class ProfileStore(context: Context) {
                 .extractUris(text)
                 .ifEmpty {
 
+                    val trimmed =
+                        text.trim()
+
                     if (
-                        text.trim().startsWith(
+                        trimmed.startsWith(
                             "vless://",
                             true
                         ) ||
-                        text.trim().startsWith(
+                        trimmed.startsWith(
                             "trojan://",
                             true
                         ) ||
-                        text.trim().startsWith(
+                        trimmed.startsWith(
                             "vmess://",
                             true
                         )
                     ) {
+
                         listOf(
-                            text.trim()
+                            trimmed
                         )
+
                     } else {
+
                         emptyList()
                     }
                 }
 
         if (candidates.isEmpty()) {
+
             return ProfileImportResult(
                 snapshot(),
                 0,
@@ -486,9 +644,12 @@ class ProfileStore(context: Context) {
         val errors =
             mutableListOf<String>()
 
-        var imported = 0
+        var imported =
+            0
 
-        candidates.forEachIndexed { index, raw ->
+        candidates.forEachIndexed {
+                index,
+                raw ->
 
             runCatching {
 
@@ -502,14 +663,18 @@ class ProfileStore(context: Context) {
 
             }.onSuccess { profile ->
 
-                current.removeAll { existing ->
+                current.removeAll {
+                    existing ->
+
                     !existing.isBuiltIn &&
-                        ProfileUriParser.canonicalUri(
-                            existing
-                        ) ==
-                        ProfileUriParser.canonicalUri(
-                            profile
-                        )
+                        ProfileUriParser
+                            .canonicalUri(
+                                existing
+                            ) ==
+                        ProfileUriParser
+                            .canonicalUri(
+                                profile
+                            )
                 }
 
                 current.add(
@@ -530,7 +695,10 @@ class ProfileStore(context: Context) {
         }
 
         if (imported > 0) {
-            writeProfiles(current)
+
+            writeProfiles(
+                current
+            )
         }
 
         return ProfileImportResult(
@@ -540,12 +708,16 @@ class ProfileStore(context: Context) {
         )
     }
 
+    /**
+     * وارد کردن چند پروفایل
+     */
     @Synchronized
     fun importProfiles(
         profiles: List<ProxyProfile>
     ): ProfileImportResult {
 
         if (profiles.isEmpty()) {
+
             return ProfileImportResult(
                 snapshot(),
                 0,
@@ -558,36 +730,46 @@ class ProfileStore(context: Context) {
                 .customProfiles
                 .toMutableList()
 
-        var imported = 0
+        var imported =
+            0
 
-        profiles.asReversed().forEach { profile ->
+        profiles
+            .asReversed()
+            .forEach { profile ->
 
-            if (profile.isBuiltIn) {
-                return@forEach
-            }
+                if (profile.isBuiltIn) {
+                    return@forEach
+                }
 
-            val canonical =
-                ProfileUriParser.canonicalUri(
+                val canonical =
+                    ProfileUriParser
+                        .canonicalUri(
+                            profile
+                        )
+
+                current.removeAll {
+                    existing ->
+
+                    existing.id == profile.id ||
+                        ProfileUriParser
+                            .canonicalUri(
+                                existing
+                            ) == canonical
+                }
+
+                current.add(
+                    0,
                     profile
                 )
 
-            current.removeAll { existing ->
-                existing.id == profile.id ||
-                    ProfileUriParser.canonicalUri(
-                        existing
-                    ) == canonical
+                imported++
             }
 
-            current.add(
-                0,
-                profile
-            )
-
-            imported++
-        }
-
         if (imported > 0) {
-            writeProfiles(current)
+
+            writeProfiles(
+                current
+            )
         }
 
         return ProfileImportResult(
@@ -597,6 +779,9 @@ class ProfileStore(context: Context) {
         )
     }
 
+    /**
+     * ویرایش کانفیگ
+     */
     @Synchronized
     fun update(
         id: String,
@@ -605,15 +790,12 @@ class ProfileStore(context: Context) {
     ): ProfileLibrary {
 
         require(
-            !ProxyProfile.isProtectedBuiltIn(id)
+            !ProxyProfile
+                .isProtectedBuiltIn(id)
         ) {
             "Built-in profile is read-only"
         }
 
-        /*
-         * Subscription configs را می‌توان از داخل برنامه ویرایش کرد،
-         * ولی در Refresh بعدی نسخه GitHub دوباره جایگزین می‌شود.
-         */
         val current =
             snapshot()
                 .customProfiles
@@ -624,7 +806,9 @@ class ProfileStore(context: Context) {
                 it.id == id
             }
 
-        require(index >= 0) {
+        require(
+            index >= 0
+        ) {
             "Profile is no longer available"
         }
 
@@ -635,11 +819,16 @@ class ProfileStore(context: Context) {
                 nameOverride = name
             )
 
-        writeProfiles(current)
+        writeProfiles(
+            current
+        )
 
         return snapshot()
     }
 
+    /**
+     * ذخیره کشور کانفیگ
+     */
     @Synchronized
     fun updateCountry(
         id: String,
@@ -647,7 +836,8 @@ class ProfileStore(context: Context) {
     ): ProfileLibrary {
 
         require(
-            !ProxyProfile.isProtectedBuiltIn(id)
+            !ProxyProfile
+                .isProtectedBuiltIn(id)
         ) {
             "Built-in profile is read-only"
         }
@@ -666,7 +856,9 @@ class ProfileStore(context: Context) {
                 it.id == id
             }
 
-        require(index >= 0) {
+        require(
+            index >= 0
+        ) {
             "Profile is no longer available"
         }
 
@@ -682,20 +874,29 @@ class ProfileStore(context: Context) {
                 country = country
             )
 
-        writeProfiles(current)
+        writeProfiles(
+            current
+        )
 
         return snapshot()
     }
 
+    /**
+     * حذف یک کانفیگ
+     */
     @Synchronized
     fun delete(
         id: String
     ): ProfileLibrary {
+
         return deleteMany(
             setOf(id)
         )
     }
 
+    /**
+     * حذف چند کانفیگ
+     */
     @Synchronized
     fun deleteMany(
         ids: Set<String>
@@ -721,11 +922,14 @@ class ProfileStore(context: Context) {
                     it.id in ids
                 }
 
-        writeProfiles(remaining)
+        writeProfiles(
+            remaining
+        )
 
         if (
             before.selectedId in ids
         ) {
+
             prefs.edit()
                 .putString(
                     KEY_SELECTED,
@@ -737,9 +941,17 @@ class ProfileStore(context: Context) {
         return snapshot()
     }
 
-    fun selectedProfile(): ProxyProfile =
-        snapshot().selectedProfile
+    /**
+     * کانفیگ انتخاب‌شده
+     */
+    fun selectedProfile():
+        ProxyProfile =
+        snapshot()
+            .selectedProfile
 
+    /**
+     * ذخیره کانفیگ فعال
+     */
     @Synchronized
     fun markActive(
         id: String,
@@ -762,6 +974,9 @@ class ProfileStore(context: Context) {
             .apply()
     }
 
+    /**
+     * پاک کردن کانفیگ فعال
+     */
     @Synchronized
     fun clearActive() {
 
@@ -772,13 +987,18 @@ class ProfileStore(context: Context) {
             .apply()
     }
 
-    fun activeProfile(): ProxyProfile? {
+    /**
+     * کانفیگ فعال
+     */
+    fun activeProfile():
+        ProxyProfile? {
 
         val id =
             prefs.getString(
                 KEY_ACTIVE,
                 null
-            ) ?: return null
+            )
+                ?: return null
 
         return snapshot()
             .allProfiles
@@ -787,7 +1007,11 @@ class ProfileStore(context: Context) {
             }
     }
 
-    fun activeEndpoint(): ProfileEndpoint? {
+    /**
+     * Endpoint فعال
+     */
+    fun activeEndpoint():
+        ProfileEndpoint? {
 
         val host =
             prefs.getString(
@@ -807,16 +1031,24 @@ class ProfileStore(context: Context) {
             host.isNotBlank() &&
             port in 1..65_535
         ) {
+
             ProfileEndpoint(
                 host,
                 port
             )
+
         } else {
+
             null
         }
     }
 
-    private fun readProfiles(): List<ProxyProfile> =
+    /**
+     * خواندن پروفایل‌ها
+     */
+    private fun readProfiles():
+        List<ProxyProfile> =
+
         runCatching {
 
             val array =
@@ -824,26 +1056,36 @@ class ProfileStore(context: Context) {
                     prefs.getString(
                         KEY_PROFILES,
                         "[]"
-                    ) ?: "[]"
+                    )
+                        ?: "[]"
                 )
 
             buildList {
 
-                repeat(array.length()) { index ->
+                repeat(
+                    array.length()
+                ) { index ->
 
                     val item =
                         array.optJSONObject(
                             index
-                        ) ?: return@repeat
+                        )
+                            ?: return@repeat
 
                     val id =
-                        item.optString("id")
+                        item.optString(
+                            "id"
+                        )
 
                     val uri =
-                        item.optString("uri")
+                        item.optString(
+                            "uri"
+                        )
 
                     val name =
-                        item.optString("name")
+                        item.optString(
+                            "name"
+                        )
 
                     val storedCountry =
                         CountryMetadata.resolve(
@@ -866,34 +1108,36 @@ class ProfileStore(context: Context) {
                             if (
                                 storedCountry.isKnown
                             ) {
+
                                 profile.copy(
                                     country =
                                         storedCountry
                                 )
+
                             } else {
+
                                 profile
                             }
                         }
 
-                    }.getOrNull()
+                    }
+                        .getOrNull()
                         ?.let(::add)
                 }
             }
 
-        }.getOrDefault(
-            emptyList()
-        )
+        }
+            .getOrDefault(
+                emptyList()
+            )
 
     /**
      * ذخیره پروفایل‌ها
-     *
-     * subscriptionIds فقط برای مستند بودن
-     * ارسال می‌شود؛ شناسه خود پروفایل مشخص می‌کند
-     * که از ساب آمده است.
      */
     private fun writeProfiles(
         profiles: List<ProxyProfile>,
-        subscriptionIds: Set<String> = emptySet(),
+        subscriptionIds: Set<String> =
+            emptySet(),
     ) {
 
         val array =
@@ -904,12 +1148,18 @@ class ProfileStore(context: Context) {
             val persistedUri =
                 profile.rawUri
                     .takeIf {
+
                         ProfileUriParser
-                            .extractUris(it)
+                            .extractUris(
+                                it
+                            )
                             .isNotEmpty()
+
                     }
                     ?: ProfileUriParser
-                        .canonicalUri(profile)
+                        .canonicalUri(
+                            profile
+                        )
 
             val item =
                 JSONObject()
@@ -927,15 +1177,13 @@ class ProfileStore(context: Context) {
                     )
 
             /*
-             * برای پروفایل‌های ساب یک علامت داخلی
-             * ذخیره می‌کنیم.
-             *
-             * این مورد در UI نمایش داده نمی‌شود.
+             * علامت داخلی Subscription
              */
             if (
                 profile.id in subscriptionIds ||
                 isSubscriptionProfile(profile)
             ) {
+
                 item.put(
                     "source",
                     "subscription"
@@ -945,6 +1193,7 @@ class ProfileStore(context: Context) {
             if (
                 profile.country.isKnown
             ) {
+
                 item.put(
                     "countryCode",
                     profile.country.countryCode
@@ -967,6 +1216,9 @@ class ProfileStore(context: Context) {
             .apply()
     }
 
+    /**
+     * مهاجرت نسخه قدیمی
+     */
     private fun migrateLegacyOnce() {
 
         if (
@@ -1003,15 +1255,19 @@ class ProfileStore(context: Context) {
                     legacy.getString(
                         "profiles",
                         "[]"
-                    ) ?: "[]"
+                    )
+                        ?: "[]"
                 )
 
-            repeat(old.length()) { index ->
+            repeat(
+                old.length()
+            ) { index ->
 
                 val item =
                     old.optJSONObject(
                         index
-                    ) ?: return@repeat
+                    )
+                        ?: return@repeat
 
                 val oldId =
                     item.optLong(
@@ -1053,6 +1309,7 @@ class ProfileStore(context: Context) {
                         oldId ==
                         selectedLegacy
                     ) {
+
                         migratedSelection =
                             newId
                     }
@@ -1064,7 +1321,10 @@ class ProfileStore(context: Context) {
             migrated.isNotEmpty() &&
             readProfiles().isEmpty()
         ) {
-            writeProfiles(migrated)
+
+            writeProfiles(
+                migrated
+            )
         }
 
         prefs.edit()
@@ -1075,12 +1335,12 @@ class ProfileStore(context: Context) {
             .apply {
 
                 migratedSelection?.let {
+
                     putString(
                         KEY_SELECTED,
                         it
                     )
                 }
-
             }
             .apply()
     }
